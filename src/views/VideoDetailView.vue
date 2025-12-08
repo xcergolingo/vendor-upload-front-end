@@ -25,7 +25,7 @@
 
     <div class="tabs">
       <button :class="{ active: activeTab === 'show' }" @click="setTab('show')">
-        {{ primaryTabLabel }}
+        {{ showTabLabel }}
       </button>
       <button :class="{ active: activeTab === 'edit' }" @click="setTab('edit')">
         Edit transcripts
@@ -37,15 +37,8 @@
       <p v-else-if="error" class="error">{{ error }}</p>
       <div v-else class="transcript-sections">
         <div class="transcript-block">
-          <h3>{{ primaryTabLabel }}</h3>
-          <TranscriptViewer :srt="primarySrt" />
-        </div>
-        <div
-          v-if="showOriginalSection"
-          class="transcript-block original-block"
-        >
-          <h3>Original transcripts</h3>
-          <TranscriptViewer :srt="originalSrtInput" />
+          <h3>{{ showTabLabel }}</h3>
+          <TranscriptViewer :entries="displayTranscriptEntries" />
         </div>
       </div>
     </section>
@@ -125,6 +118,7 @@ const inputLang = ref('');
 const outputLang = ref('');
 const clipLoading = ref(false);
 const clipStatus = ref('');
+const showTabLabel = 'Show transcripts';
 
 const decodedFileName = computed(() => {
   try {
@@ -136,7 +130,6 @@ const decodedFileName = computed(() => {
 
 const displayName = computed(() => decodedFileName.value.split('/').pop());
 const videoUrl = computed(() => props.videoUrl || '');
-const displaySrt = computed(() => entriesToSrt(displayEntries.value));
 const editedSrt = computed(() => entriesToSrt(editableEntries.value));
 const originalSrtInput = computed(() => srtInput.value || '');
 const isTranslated = computed(
@@ -145,13 +138,24 @@ const isTranslated = computed(
     outputLang.value &&
     inputLang.value.toLowerCase() !== outputLang.value.toLowerCase()
 );
-const primaryTabLabel = computed(() =>
-  isTranslated.value ? 'Translated transcripts' : 'Original transcripts'
+const parsedInputEntries = computed(() =>
+  originalSrtInput.value
+    ? assignIndexes(parseSrt(originalSrtInput.value))
+    : []
 );
-const primarySrt = computed(() => displaySrt.value);
-const showOriginalSection = computed(
-  () => isTranslated.value && !!originalSrtInput.value
-);
+const displayTranscriptEntries = computed(() => {
+  const outputEntries = displayEntries.value;
+  const inputEntries = parsedInputEntries.value;
+  const shouldOverlay = isTranslated.value && inputEntries.length;
+  if (shouldOverlay) {
+    return mergeEntriesWithOverlay(inputEntries, outputEntries);
+  }
+  const singleSource = outputEntries.length ? outputEntries : inputEntries;
+  let counter = 1;
+  return singleSource.map(entry =>
+    buildSingleViewerEntry(entry, 'single', counter++)
+  );
+});
 
 const isDirty = computed(() => {
   if (baselineEntries.value.length !== editableEntries.value.length) return true;
@@ -173,6 +177,109 @@ function assignIndexes(entries) {
     ...entry,
     index: String(idx + 1)
   }));
+}
+
+function timestampToMs(timestamp) {
+  if (!timestamp) return 0;
+  const [hours = '0', minutes = '0', secondsWithMs = '0'] = timestamp
+    .trim()
+    .split(':');
+  const [seconds = '0', fraction = '0'] = secondsWithMs
+    .split(/[.,]/)
+    .map(part => part.trim());
+  const paddedFraction = `${fraction}000`.slice(0, 3);
+  const hoursMs = Number(hours) * 3600000;
+  const minutesMs = Number(minutes) * 60000;
+  const secondsMs = Number(seconds) * 1000;
+  const fractionMs = Number(paddedFraction);
+  return (hoursMs || 0) + (minutesMs || 0) + (secondsMs || 0) + (fractionMs || 0);
+}
+
+function timestampsMatch(entryA = {}, entryB = {}) {
+  const startDelta = Math.abs(timestampToMs(entryA.start) - timestampToMs(entryB.start));
+  const endA = entryA.end;
+  const endB = entryB.end;
+  const endDelta = Math.abs(timestampToMs(endA) - timestampToMs(endB));
+  const startsMatch = startDelta <= 20;
+  if (!startsMatch) return false;
+  if (!endA || !endB) return true;
+  return endDelta <= 20;
+}
+
+function buildSingleViewerEntry(entry = {}, variant, id) {
+  return {
+    id: `entry-${id}`,
+    start: entry.start || '',
+    end: entry.end || '',
+    segments: [
+      {
+        text: (entry.text || '').trim(),
+        variant
+      }
+    ]
+  };
+}
+
+function buildCombinedViewerEntry(primaryEntry = {}, secondaryEntry = {}, id) {
+  return {
+    id: `entry-${id}`,
+    start: primaryEntry.start || secondaryEntry.start || '',
+    end: primaryEntry.end || secondaryEntry.end || '',
+    segments: [
+      {
+        text: (primaryEntry.text || '').trim(),
+        variant: 'input'
+      },
+      {
+        text: (secondaryEntry.text || '').trim(),
+        variant: 'output'
+      }
+    ]
+  };
+}
+
+function mergeEntriesWithOverlay(inputEntries, outputEntries) {
+  const merged = [];
+  let inputIndex = 0;
+  let outputIndex = 0;
+  let counter = 1;
+  while (
+    inputIndex < inputEntries.length ||
+    outputIndex < outputEntries.length
+  ) {
+    const inputEntry = inputEntries[inputIndex];
+    const outputEntry = outputEntries[outputIndex];
+    if (inputEntry && outputEntry) {
+      if (timestampsMatch(inputEntry, outputEntry)) {
+        merged.push(
+          buildCombinedViewerEntry(inputEntry, outputEntry, counter++)
+        );
+        inputIndex += 1;
+        outputIndex += 1;
+        continue;
+      }
+      const inputMs = timestampToMs(inputEntry.start);
+      const outputMs = timestampToMs(outputEntry.start);
+      if (inputMs <= outputMs) {
+        merged.push(buildSingleViewerEntry(inputEntry, 'input', counter++));
+        inputIndex += 1;
+      } else {
+        merged.push(buildSingleViewerEntry(outputEntry, 'output', counter++));
+        outputIndex += 1;
+      }
+      continue;
+    }
+    if (inputEntry) {
+      merged.push(buildSingleViewerEntry(inputEntry, 'input', counter++));
+      inputIndex += 1;
+      continue;
+    }
+    if (outputEntry) {
+      merged.push(buildSingleViewerEntry(outputEntry, 'output', counter++));
+      outputIndex += 1;
+    }
+  }
+  return merged;
 }
 
 async function fetchTranscripts() {
