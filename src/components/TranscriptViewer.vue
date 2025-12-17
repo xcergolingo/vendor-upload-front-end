@@ -1,10 +1,19 @@
 <template>
-  <div class="transcript-viewer" v-if="entries.length">
-    <div v-for="entry in entries" :key="entry.index" class="entry">
+  <div class="transcript-viewer" v-if="renderEntries.length">
+    <div v-for="entry in renderEntries" :key="entry.id" class="entry">
       <div class="time">
         {{ entry.start }} → {{ entry.end }}
       </div>
-      <p>{{ entry.text }}</p>
+      <div class="segments">
+        <p
+          v-for="(segment, index) in entry.segments"
+          :key="segment.variant + '-' + index"
+          class="segment"
+          :class="segment.variant"
+        >
+          {{ segment.text }}
+        </p>
+      </div>
     </div>
   </div>
   <p v-else class="empty">No transcript data available.</p>
@@ -18,10 +27,32 @@ const props = defineProps({
   srt: {
     type: String,
     default: ''
+  },
+  entries: {
+    type: Array,
+    default: () => []
   }
 });
 
-const entries = computed(() => parseSrt(props.srt));
+const renderEntries = computed(() => {
+  if (props.entries?.length) {
+    return props.entries;
+  }
+  if (!props.srt) {
+    return [];
+  }
+  return parseSrt(props.srt).map((entry, index) => ({
+    id: entry.index || `entry-${index + 1}`,
+    start: entry.start,
+    end: entry.end,
+    segments: [
+      {
+        text: (entry.text || '').trim(),
+        variant: 'single'
+      }
+    ]
+  }));
+});
 </script>
 
 <style scoped>
@@ -42,6 +73,26 @@ const entries = computed(() => parseSrt(props.srt));
   font-weight: 600;
   color: #4e73df;
   margin-bottom: 6px;
+}
+
+.segments {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.segment {
+  margin: 0;
+  color: #2c3e50;
+}
+
+.segment.input {
+  color: #1cc88a;
+}
+
+.segment.output {
+  color: #4e73df;
+  font-weight: 600;
 }
 
 .empty {
