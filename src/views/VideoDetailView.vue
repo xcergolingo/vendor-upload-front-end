@@ -46,11 +46,12 @@
     <section class="panel" v-else>
       <p v-if="loading">Loading transcripts...</p>
       <p v-else-if="error" class="error">{{ error }}</p>
-      <div v-else>
+        <div v-else>
         <div class="edit-toolbar">
           <button @click="resetTranscripts" :disabled="!isDirty">
             Reset transcripts
           </button>
+          <span v-if="editLangLabel" class="lang-hint">Editing: {{ editLangLabel }}</span>
           <span class="hint">Drag a box onto its neighbor to merge them.</span>
         </div>
         <div class="editable-list">
@@ -138,6 +139,12 @@ const isTranslated = computed(
     outputLang.value &&
     inputLang.value.toLowerCase() !== outputLang.value.toLowerCase()
 );
+const editLangLabel = computed(() => {
+  const input = (inputLang.value || '').trim();
+  const output = (outputLang.value || '').trim();
+  if (isTranslated.value) return input || output;
+  return output || input;
+});
 const parsedInputEntries = computed(() =>
   originalSrtInput.value
     ? assignIndexes(parseSrt(originalSrtInput.value))
@@ -311,24 +318,44 @@ async function fetchTranscripts() {
     const payload = await response.json();
     const body =
       payload && typeof payload.body === 'object' ? payload.body : payload;
-    const srtValue = body?.srt || '';
-    srtInput.value = body?.srt_input || '';
-    inputLang.value = body?.input_lang || '';
-    outputLang.value = body?.output_lang || '';
-    if (!srtValue) {
+    const outputSrtValue = body?.srt || '';
+    const inputSrtValue = body?.srt_input || '';
+    const inputLanguage = body?.input_lang || '';
+    const outputLanguage = body?.output_lang || '';
+
+    srtInput.value = inputSrtValue;
+    inputLang.value = inputLanguage;
+    outputLang.value = outputLanguage;
+
+    const isActuallyTranslated =
+      inputLanguage &&
+      outputLanguage &&
+      inputLanguage.toLowerCase() !== outputLanguage.toLowerCase();
+
+    const parsedOutput = outputSrtValue
+      ? assignIndexes(parseSrt(outputSrtValue))
+      : [];
+    const parsedInput = inputSrtValue ? assignIndexes(parseSrt(inputSrtValue)) : [];
+
+    if (!parsedOutput.length && !parsedInput.length) {
       error.value = 'Transcript not available for this video.';
-      originalEntries.value = [];
+      baselineEntries.value = [];
+      displayEntries.value = [];
       editableEntries.value = [];
       return;
     }
-    const parsed = assignIndexes(parseSrt(srtValue));
-    if (!parsed.length) {
-      error.value = 'Unable to parse SRT response.';
-      return;
-    }
-    baselineEntries.value = cloneEntries(parsed);
-    displayEntries.value = cloneEntries(parsed);
-    editableEntries.value = cloneEntries(parsed);
+
+    displayEntries.value = cloneEntries(parsedOutput);
+
+    const parsedForEditing =
+      isActuallyTranslated && parsedInput.length
+        ? parsedInput
+        : parsedOutput.length
+          ? parsedOutput
+          : parsedInput;
+
+    baselineEntries.value = cloneEntries(parsedForEditing);
+    editableEntries.value = cloneEntries(parsedForEditing);
     clearDragState();
   } catch (err) {
     console.error(err);
@@ -604,6 +631,12 @@ h2 {
 .hint {
   color: #858796;
   font-size: 0.9rem;
+}
+
+.lang-hint {
+  color: #4e73df;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .editable-list {
