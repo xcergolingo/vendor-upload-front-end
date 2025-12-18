@@ -20,7 +20,7 @@
     </header>
 
     <section v-if="videoUrl" class="player">
-      <video controls :src="videoUrl"></video>
+      <video ref="videoRef" controls :src="videoUrl"></video>
     </section>
 
     <div class="tabs">
@@ -38,7 +38,11 @@
       <div v-else class="transcript-sections">
         <div class="transcript-block">
           <h3>{{ showTabLabel }}</h3>
-          <TranscriptViewer :entries="displayTranscriptEntries" />
+          <TranscriptViewer
+            :entries="displayTranscriptEntries"
+            :selectable="!!videoUrl"
+            @select="handleTranscriptSelect"
+          />
         </div>
       </div>
     </section>
@@ -64,6 +68,7 @@
               'drag-target': dragTargetIndex === index && canDropOn(index)
             }"
             draggable="true"
+            @click="handleEditableEntryClick(entry)"
             @dragstart="handleDragStart($event, index)"
             @dragover.prevent="handleDragOver($event, index)"
             @dragleave.prevent="handleDragLeave(index)"
@@ -119,7 +124,11 @@ const inputLang = ref('');
 const outputLang = ref('');
 const clipLoading = ref(false);
 const clipStatus = ref('');
+const videoRef = ref(null);
 const showTabLabel = 'Show transcripts';
+let videoSegmentEndSeconds = null;
+let videoTimeUpdateHandler = null;
+let lastDragStartAt = 0;
 
 const decodedFileName = computed(() => {
   try {
@@ -200,6 +209,74 @@ function timestampToMs(timestamp) {
   const secondsMs = Number(seconds) * 1000;
   const fractionMs = Number(paddedFraction);
   return (hoursMs || 0) + (minutesMs || 0) + (secondsMs || 0) + (fractionMs || 0);
+}
+
+function stopSegmentPlayback() {
+  const video = videoRef.value;
+  if (!video) return;
+  if (videoTimeUpdateHandler) {
+    video.removeEventListener('timeupdate', videoTimeUpdateHandler);
+    videoTimeUpdateHandler = null;
+  }
+  videoSegmentEndSeconds = null;
+}
+
+function seekVideoWhenReady(video, seconds) {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  if (video.readyState >= 1) {
+    try {
+      video.currentTime = safeSeconds;
+    } catch (err) {
+      console.warn('Unable to seek video.', err);
+    }
+    return Promise.resolve();
+  }
+  return new Promise(resolve => {
+    const handleLoadedMetadata = () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      try {
+        video.currentTime = safeSeconds;
+      } catch (err) {
+        console.warn('Unable to seek video.', err);
+      }
+      resolve();
+    };
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+  });
+}
+
+async function playTranscriptSegment(startTimestamp, endTimestamp) {
+  const video = videoRef.value;
+  if (!video) return;
+
+  const startSeconds = timestampToMs(startTimestamp) / 1000;
+  const endSeconds = endTimestamp ? timestampToMs(endTimestamp) / 1000 : null;
+
+  stopSegmentPlayback();
+
+  await seekVideoWhenReady(video, startSeconds);
+
+  if (Number.isFinite(endSeconds) && endSeconds !== null && endSeconds > startSeconds + 0.01) {
+    videoSegmentEndSeconds = endSeconds;
+    videoTimeUpdateHandler = () => {
+      if (videoSegmentEndSeconds === null) return;
+      if (video.currentTime >= videoSegmentEndSeconds) {
+        video.pause();
+        stopSegmentPlayback();
+      }
+    };
+    video.addEventListener('timeupdate', videoTimeUpdateHandler);
+  }
+
+  try {
+    await video.play();
+  } catch (err) {
+    console.warn('Unable to autoplay segment.', err);
+  }
+}
+
+function handleTranscriptSelect(entry) {
+  playTranscriptSegment(entry?.start, entry?.end);
 }
 
 function timestampsMatch(entryA = {}, entryB = {}) {
@@ -376,6 +453,7 @@ function canDropOn(index) {
 }
 
 function handleDragStart(event, index) {
+  lastDragStartAt = Date.now();
   dragSourceIndex.value = index;
   dragTargetIndex.value = null;
   if (event?.dataTransfer) {
@@ -413,6 +491,11 @@ function handleDragEnd() {
 function clearDragState() {
   dragSourceIndex.value = null;
   dragTargetIndex.value = null;
+}
+
+function handleEditableEntryClick(entry) {
+  if (Date.now() - lastDragStartAt < 250) return;
+  playTranscriptSegment(entry?.start, entry?.end);
 }
 
 function mergeEntries(sourceIndex, targetIndex) {
@@ -507,6 +590,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearDragState();
+  stopSegmentPlayback();
 });
 </script>
 
