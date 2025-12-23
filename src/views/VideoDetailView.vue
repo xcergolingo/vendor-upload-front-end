@@ -20,7 +20,7 @@
     </header>
 
     <section v-if="videoUrl" class="player">
-      <video ref="videoRef" controls :src="videoUrl"></video>
+      <video ref="videoRef" controls playsinline webkit-playsinline :src="videoUrl"></video>
     </section>
 
     <div class="tabs">
