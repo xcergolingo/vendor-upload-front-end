@@ -20,7 +20,7 @@
     </header>
 
     <section v-if="videoUrl" class="player">
-      <video controls :src="videoUrl"></video>
+      <video ref="videoRef" controls playsinline webkit-playsinline :src="videoUrl"></video>
     </section>
 
     <div class="tabs">
@@ -38,7 +38,11 @@
       <div v-else class="transcript-sections">
         <div class="transcript-block">
           <h3>{{ showTabLabel }}</h3>
-          <TranscriptViewer :entries="displayTranscriptEntries" />
+          <TranscriptViewer
+            :entries="displayTranscriptEntries"
+            :selectable="!!videoUrl"
+            @select="handleTranscriptSelect"
+          />
         </div>
       </div>
     </section>
@@ -46,11 +50,12 @@
     <section class="panel" v-else>
       <p v-if="loading">Loading transcripts...</p>
       <p v-else-if="error" class="error">{{ error }}</p>
-      <div v-else>
+        <div v-else>
         <div class="edit-toolbar">
           <button @click="resetTranscripts" :disabled="!isDirty">
             Reset transcripts
           </button>
+          <span v-if="editLangLabel" class="lang-hint">Editing: {{ editLangLabel }}</span>
           <span class="hint">Drag a box onto its neighbor to merge them.</span>
         </div>
         <div class="editable-list">
@@ -63,6 +68,7 @@
               'drag-target': dragTargetIndex === index && canDropOn(index)
             }"
             draggable="true"
+            @click="handleEditableEntryClick(entry)"
             @dragstart="handleDragStart($event, index)"
             @dragover.prevent="handleDragOver($event, index)"
             @dragleave.prevent="handleDragLeave(index)"
@@ -118,7 +124,11 @@ const inputLang = ref('');
 const outputLang = ref('');
 const clipLoading = ref(false);
 const clipStatus = ref('');
+const videoRef = ref(null);
 const showTabLabel = 'Show transcripts';
+let videoSegmentEndSeconds = null;
+let videoTimeUpdateHandler = null;
+let lastDragStartAt = 0;
 
 const decodedFileName = computed(() => {
   try {
@@ -138,6 +148,12 @@ const isTranslated = computed(
     outputLang.value &&
     inputLang.value.toLowerCase() !== outputLang.value.toLowerCase()
 );
+const editLangLabel = computed(() => {
+  const input = (inputLang.value || '').trim();
+  const output = (outputLang.value || '').trim();
+  if (isTranslated.value) return input || output;
+  return output || input;
+});
 const parsedInputEntries = computed(() =>
   originalSrtInput.value
     ? assignIndexes(parseSrt(originalSrtInput.value))
@@ -193,6 +209,74 @@ function timestampToMs(timestamp) {
   const secondsMs = Number(seconds) * 1000;
   const fractionMs = Number(paddedFraction);
   return (hoursMs || 0) + (minutesMs || 0) + (secondsMs || 0) + (fractionMs || 0);
+}
+
+function stopSegmentPlayback() {
+  const video = videoRef.value;
+  if (!video) return;
+  if (videoTimeUpdateHandler) {
+    video.removeEventListener('timeupdate', videoTimeUpdateHandler);
+    videoTimeUpdateHandler = null;
+  }
+  videoSegmentEndSeconds = null;
+}
+
+function seekVideoWhenReady(video, seconds) {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  if (video.readyState >= 1) {
+    try {
+      video.currentTime = safeSeconds;
+    } catch (err) {
+      console.warn('Unable to seek video.', err);
+    }
+    return Promise.resolve();
+  }
+  return new Promise(resolve => {
+    const handleLoadedMetadata = () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      try {
+        video.currentTime = safeSeconds;
+      } catch (err) {
+        console.warn('Unable to seek video.', err);
+      }
+      resolve();
+    };
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+  });
+}
+
+async function playTranscriptSegment(startTimestamp, endTimestamp) {
+  const video = videoRef.value;
+  if (!video) return;
+
+  const startSeconds = timestampToMs(startTimestamp) / 1000;
+  const endSeconds = endTimestamp ? timestampToMs(endTimestamp) / 1000 : null;
+
+  stopSegmentPlayback();
+
+  await seekVideoWhenReady(video, startSeconds);
+
+  if (Number.isFinite(endSeconds) && endSeconds !== null && endSeconds > startSeconds + 0.01) {
+    videoSegmentEndSeconds = endSeconds;
+    videoTimeUpdateHandler = () => {
+      if (videoSegmentEndSeconds === null) return;
+      if (video.currentTime >= videoSegmentEndSeconds) {
+        video.pause();
+        stopSegmentPlayback();
+      }
+    };
+    video.addEventListener('timeupdate', videoTimeUpdateHandler);
+  }
+
+  try {
+    await video.play();
+  } catch (err) {
+    console.warn('Unable to autoplay segment.', err);
+  }
+}
+
+function handleTranscriptSelect(entry) {
+  playTranscriptSegment(entry?.start, entry?.end);
 }
 
 function timestampsMatch(entryA = {}, entryB = {}) {
@@ -311,24 +395,44 @@ async function fetchTranscripts() {
     const payload = await response.json();
     const body =
       payload && typeof payload.body === 'object' ? payload.body : payload;
-    const srtValue = body?.srt || '';
-    srtInput.value = body?.srt_input || '';
-    inputLang.value = body?.input_lang || '';
-    outputLang.value = body?.output_lang || '';
-    if (!srtValue) {
+    const outputSrtValue = body?.srt || '';
+    const inputSrtValue = body?.srt_input || '';
+    const inputLanguage = body?.input_lang || '';
+    const outputLanguage = body?.output_lang || '';
+
+    srtInput.value = inputSrtValue;
+    inputLang.value = inputLanguage;
+    outputLang.value = outputLanguage;
+
+    const isActuallyTranslated =
+      inputLanguage &&
+      outputLanguage &&
+      inputLanguage.toLowerCase() !== outputLanguage.toLowerCase();
+
+    const parsedOutput = outputSrtValue
+      ? assignIndexes(parseSrt(outputSrtValue))
+      : [];
+    const parsedInput = inputSrtValue ? assignIndexes(parseSrt(inputSrtValue)) : [];
+
+    if (!parsedOutput.length && !parsedInput.length) {
       error.value = 'Transcript not available for this video.';
-      originalEntries.value = [];
+      baselineEntries.value = [];
+      displayEntries.value = [];
       editableEntries.value = [];
       return;
     }
-    const parsed = assignIndexes(parseSrt(srtValue));
-    if (!parsed.length) {
-      error.value = 'Unable to parse SRT response.';
-      return;
-    }
-    baselineEntries.value = cloneEntries(parsed);
-    displayEntries.value = cloneEntries(parsed);
-    editableEntries.value = cloneEntries(parsed);
+
+    displayEntries.value = cloneEntries(parsedOutput);
+
+    const parsedForEditing =
+      isActuallyTranslated && parsedInput.length
+        ? parsedInput
+        : parsedOutput.length
+          ? parsedOutput
+          : parsedInput;
+
+    baselineEntries.value = cloneEntries(parsedForEditing);
+    editableEntries.value = cloneEntries(parsedForEditing);
     clearDragState();
   } catch (err) {
     console.error(err);
@@ -349,6 +453,7 @@ function canDropOn(index) {
 }
 
 function handleDragStart(event, index) {
+  lastDragStartAt = Date.now();
   dragSourceIndex.value = index;
   dragTargetIndex.value = null;
   if (event?.dataTransfer) {
@@ -386,6 +491,11 @@ function handleDragEnd() {
 function clearDragState() {
   dragSourceIndex.value = null;
   dragTargetIndex.value = null;
+}
+
+function handleEditableEntryClick(entry) {
+  if (Date.now() - lastDragStartAt < 250) return;
+  playTranscriptSegment(entry?.start, entry?.end);
 }
 
 function mergeEntries(sourceIndex, targetIndex) {
@@ -480,6 +590,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearDragState();
+  stopSegmentPlayback();
 });
 </script>
 
@@ -604,6 +715,12 @@ h2 {
 .hint {
   color: #858796;
   font-size: 0.9rem;
+}
+
+.lang-hint {
+  color: #4e73df;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .editable-list {

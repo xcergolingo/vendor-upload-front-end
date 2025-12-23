@@ -14,7 +14,7 @@
       <li v-for="video in paginatedVideos" :key="video.name">
         <div class="info">
           <strong>{{ video.name }}</strong>
-          <video controls preload="metadata" :src="video.url"></video>
+          <video controls playsinline webkit-playsinline preload="metadata" :src="video.url"></video>
         </div>
         <button class="detail" @click="openDetails(video)">
           Show transcripts

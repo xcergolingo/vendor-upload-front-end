@@ -1,6 +1,16 @@
 <template>
   <div class="transcript-viewer" v-if="renderEntries.length">
-    <div v-for="entry in renderEntries" :key="entry.id" class="entry">
+    <div
+      v-for="entry in renderEntries"
+      :key="entry.id"
+      class="entry"
+      :class="{ selectable: selectable }"
+      :role="selectable ? 'button' : undefined"
+      :tabindex="selectable ? 0 : undefined"
+      @click="handleSelect(entry)"
+      @keydown.enter.prevent="handleSelect(entry)"
+      @keydown.space.prevent="handleSelect(entry)"
+    >
       <div class="time">
         {{ entry.start }} → {{ entry.end }}
       </div>
@@ -31,8 +41,19 @@ const props = defineProps({
   entries: {
     type: Array,
     default: () => []
+  },
+  selectable: {
+    type: Boolean,
+    default: false
   }
 });
+
+const emit = defineEmits(['select']);
+
+function handleSelect(entry) {
+  if (!props.selectable) return;
+  emit('select', entry);
+}
 
 const renderEntries = computed(() => {
   if (props.entries?.length) {
@@ -67,6 +88,15 @@ const renderEntries = computed(() => {
   border-radius: 6px;
   background-color: #f8f9fc;
   border: 1px solid #e3e6f0;
+}
+
+.entry.selectable {
+  cursor: pointer;
+}
+
+.entry.selectable:hover {
+  border-color: #4e73df;
+  background-color: #f0f3ff;
 }
 
 .time {

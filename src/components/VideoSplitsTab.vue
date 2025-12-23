@@ -19,7 +19,7 @@
     <ul v-else class="split-list">
       <li v-for="split in splits" :key="getSplitId(split)" class="split-card">
         <div class="sentence">{{ split.sent }}</div>
-        <video controls preload="metadata" :src="split.video_url"></video>
+        <video controls playsinline webkit-playsinline preload="metadata" :src="split.video_url"></video>
         <div class="actions">
           <button
             class="primary"
