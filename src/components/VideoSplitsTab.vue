@@ -27,9 +27,11 @@
               v-model.number="split.priority_score"
               class="priority-input"
               type="number"
+              min="1"
               step="1"
               inputmode="numeric"
               :disabled="split.isIndexing"
+              @blur="normalizePriorityScore(split)"
             />
             <button class="primary" :disabled="split.isIndexing" @click="submitIndexSplit(split)">
               {{ split.isIndexing ? 'Indexing...' : 'Submit' }}
@@ -111,7 +113,7 @@ async function fetchSplits() {
       ...split,
       isIndexing: false,
       showPriorityInput: false,
-      priority_score: 0
+      priority_score: 1
     }));
     resetDownloadState();
   } catch (err) {
@@ -170,8 +172,13 @@ function downloadSelected() {
 
 function startIndexSplit(split) {
   if (split.if_indexed || split.isIndexing) return;
-  split.priority_score = Number.isFinite(split.priority_score) ? split.priority_score : 0;
+  normalizePriorityScore(split);
   split.showPriorityInput = true;
+}
+
+function normalizePriorityScore(split) {
+  const numericValue = Number(split.priority_score);
+  split.priority_score = Number.isFinite(numericValue) ? Math.max(1, Math.trunc(numericValue)) : 1;
 }
 
 function cancelIndexSplit(split) {
@@ -181,6 +188,7 @@ function cancelIndexSplit(split) {
 
 async function submitIndexSplit(split) {
   if (split.if_indexed || split.isIndexing) return;
+  normalizePriorityScore(split);
   split.isIndexing = true;
   try {
     await fetch(
@@ -191,7 +199,7 @@ async function submitIndexSplit(split) {
         body: JSON.stringify({
           user_name: props.userEmail,
           timestamp: split.timestamp,
-          priority_score: Number.isFinite(split.priority_score) ? split.priority_score : 0
+          priority_score: split.priority_score
         })
       }
     );
