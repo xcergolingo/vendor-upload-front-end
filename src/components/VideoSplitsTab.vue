@@ -21,10 +21,41 @@
         <div class="sentence">{{ split.sent }}</div>
         <video controls playsinline webkit-playsinline preload="metadata" :src="split.video_url"></video>
         <div class="actions">
+          <template v-if="!split.if_indexed && split.showPriorityInput">
+            <span class="priority-label">Priority score</span>
+            <div class="priority-stepper" :aria-disabled="split.isIndexing">
+              <button
+                type="button"
+                class="priority-stepper-button"
+                :disabled="split.isIndexing || split.priority_score <= 1"
+                aria-label="Decrease priority score"
+                @click="adjustPriorityScore(split, -1)"
+              >
+                -
+              </button>
+              <span class="priority-value" aria-label="Priority score value">{{ split.priority_score }}</span>
+              <button
+                type="button"
+                class="priority-stepper-button"
+                :disabled="split.isIndexing || split.priority_score >= 10"
+                aria-label="Increase priority score"
+                @click="adjustPriorityScore(split, 1)"
+              >
+                +
+              </button>
+            </div>
+            <button class="primary" :disabled="split.isIndexing" @click="submitIndexSplit(split)">
+              {{ split.isIndexing ? 'Indexing...' : 'Submit' }}
+            </button>
+            <button class="secondary" :disabled="split.isIndexing" @click="cancelIndexSplit(split)">
+              Cancel
+            </button>
+          </template>
           <button
+            v-else
             class="primary"
             :disabled="split.if_indexed || split.isIndexing"
-            @click="indexSplit(split)"
+            @click="startIndexSplit(split)"
           >
             <span v-if="split.if_indexed">Indexed</span>
             <span v-else-if="split.isIndexing">Indexing...</span>
@@ -91,7 +122,9 @@ async function fetchSplits() {
     const payload = await response.json();
     splits.value = (payload?.body || []).map(split => ({
       ...split,
-      isIndexing: false
+      isIndexing: false,
+      showPriorityInput: false,
+      priority_score: 1
     }));
     resetDownloadState();
   } catch (err) {
@@ -148,8 +181,35 @@ function downloadSelected() {
   URL.revokeObjectURL(url);
 }
 
-async function indexSplit(split) {
+function startIndexSplit(split) {
   if (split.if_indexed || split.isIndexing) return;
+  normalizePriorityScore(split);
+  split.showPriorityInput = true;
+}
+
+function adjustPriorityScore(split, delta) {
+  if (split.isIndexing) return;
+  const numericValue = Number(split.priority_score);
+  const currentValue = Number.isFinite(numericValue) ? Math.trunc(numericValue) : 1;
+  split.priority_score = currentValue + delta;
+  normalizePriorityScore(split);
+}
+
+function normalizePriorityScore(split) {
+  const numericValue = Number(split.priority_score);
+  split.priority_score = Number.isFinite(numericValue)
+    ? Math.min(10, Math.max(1, Math.trunc(numericValue)))
+    : 1;
+}
+
+function cancelIndexSplit(split) {
+  if (split.isIndexing) return;
+  split.showPriorityInput = false;
+}
+
+async function submitIndexSplit(split) {
+  if (split.if_indexed || split.isIndexing) return;
+  normalizePriorityScore(split);
   split.isIndexing = true;
   try {
     await fetch(
@@ -159,11 +219,13 @@ async function indexSplit(split) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_name: props.userEmail,
-          timestamp: split.timestamp
+          timestamp: split.timestamp,
+          priority_score: split.priority_score
         })
       }
     );
     split.if_indexed = true;
+    split.showPriorityInput = false;
   } catch (err) {
     console.error(err);
     alert('Failed to index this split. Please try again.');
@@ -298,5 +360,43 @@ video {
 .actions button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.priority-label {
+  font-weight: 600;
+  color: #4e73df;
+  align-self: center;
+}
+
+.priority-stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.priority-stepper-button {
+  padding: 6px 10px;
+  border: none;
+  background: #f8f9fc;
+  color: #4e73df;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.priority-stepper-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.priority-value {
+  display: inline-block;
+  min-width: 26px;
+  text-align: center;
+  padding: 6px 10px;
+  font-weight: 700;
+  color: #4e73df;
+  background: white;
 }
 </style>
