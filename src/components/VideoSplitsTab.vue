@@ -21,10 +21,27 @@
         <div class="sentence">{{ split.sent }}</div>
         <video controls playsinline webkit-playsinline preload="metadata" :src="split.video_url"></video>
         <div class="actions">
+          <template v-if="!split.if_indexed && split.showPriorityInput">
+            <input
+              v-model.number="split.priority_score"
+              class="priority-input"
+              type="number"
+              step="1"
+              inputmode="numeric"
+              :disabled="split.isIndexing"
+            />
+            <button class="primary" :disabled="split.isIndexing" @click="submitIndexSplit(split)">
+              {{ split.isIndexing ? 'Indexing...' : 'Submit' }}
+            </button>
+            <button class="secondary" :disabled="split.isIndexing" @click="cancelIndexSplit(split)">
+              Cancel
+            </button>
+          </template>
           <button
+            v-else
             class="primary"
             :disabled="split.if_indexed || split.isIndexing"
-            @click="indexSplit(split)"
+            @click="startIndexSplit(split)"
           >
             <span v-if="split.if_indexed">Indexed</span>
             <span v-else-if="split.isIndexing">Indexing...</span>
@@ -91,7 +108,9 @@ async function fetchSplits() {
     const payload = await response.json();
     splits.value = (payload?.body || []).map(split => ({
       ...split,
-      isIndexing: false
+      isIndexing: false,
+      showPriorityInput: false,
+      priority_score: 0
     }));
     resetDownloadState();
   } catch (err) {
@@ -148,7 +167,18 @@ function downloadSelected() {
   URL.revokeObjectURL(url);
 }
 
-async function indexSplit(split) {
+function startIndexSplit(split) {
+  if (split.if_indexed || split.isIndexing) return;
+  split.priority_score = Number.isFinite(split.priority_score) ? split.priority_score : 0;
+  split.showPriorityInput = true;
+}
+
+function cancelIndexSplit(split) {
+  if (split.isIndexing) return;
+  split.showPriorityInput = false;
+}
+
+async function submitIndexSplit(split) {
   if (split.if_indexed || split.isIndexing) return;
   split.isIndexing = true;
   try {
@@ -159,11 +189,13 @@ async function indexSplit(split) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_name: props.userEmail,
-          timestamp: split.timestamp
+          timestamp: split.timestamp,
+          priority_score: Number.isFinite(split.priority_score) ? split.priority_score : 0
         })
       }
     );
     split.if_indexed = true;
+    split.showPriorityInput = false;
   } catch (err) {
     console.error(err);
     alert('Failed to index this split. Please try again.');
@@ -298,5 +330,12 @@ video {
 .actions button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.priority-input {
+  width: 110px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
 }
 </style>
