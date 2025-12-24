@@ -23,16 +23,27 @@
         <div class="actions">
           <template v-if="!split.if_indexed && split.showPriorityInput">
             <span class="priority-label">Priority score</span>
-            <input
-              v-model.number="split.priority_score"
-              class="priority-input"
-              type="number"
-              min="1"
-              step="1"
-              inputmode="numeric"
-              :disabled="split.isIndexing"
-              @blur="normalizePriorityScore(split)"
-            />
+            <div class="priority-stepper" :aria-disabled="split.isIndexing">
+              <button
+                type="button"
+                class="priority-stepper-button"
+                :disabled="split.isIndexing || split.priority_score <= 1"
+                aria-label="Decrease priority score"
+                @click="adjustPriorityScore(split, -1)"
+              >
+                -
+              </button>
+              <span class="priority-value" aria-label="Priority score value">{{ split.priority_score }}</span>
+              <button
+                type="button"
+                class="priority-stepper-button"
+                :disabled="split.isIndexing || split.priority_score >= 10"
+                aria-label="Increase priority score"
+                @click="adjustPriorityScore(split, 1)"
+              >
+                +
+              </button>
+            </div>
             <button class="primary" :disabled="split.isIndexing" @click="submitIndexSplit(split)">
               {{ split.isIndexing ? 'Indexing...' : 'Submit' }}
             </button>
@@ -176,9 +187,19 @@ function startIndexSplit(split) {
   split.showPriorityInput = true;
 }
 
+function adjustPriorityScore(split, delta) {
+  if (split.isIndexing) return;
+  const numericValue = Number(split.priority_score);
+  const currentValue = Number.isFinite(numericValue) ? Math.trunc(numericValue) : 1;
+  split.priority_score = currentValue + delta;
+  normalizePriorityScore(split);
+}
+
 function normalizePriorityScore(split) {
   const numericValue = Number(split.priority_score);
-  split.priority_score = Number.isFinite(numericValue) ? Math.max(1, Math.trunc(numericValue)) : 1;
+  split.priority_score = Number.isFinite(numericValue)
+    ? Math.min(10, Math.max(1, Math.trunc(numericValue)))
+    : 1;
 }
 
 function cancelIndexSplit(split) {
@@ -341,16 +362,41 @@ video {
   cursor: not-allowed;
 }
 
-.priority-input {
-  width: 110px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  border: 1px solid #ddd;
-}
-
 .priority-label {
   font-weight: 600;
   color: #4e73df;
   align-self: center;
+}
+
+.priority-stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.priority-stepper-button {
+  padding: 6px 10px;
+  border: none;
+  background: #f8f9fc;
+  color: #4e73df;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.priority-stepper-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.priority-value {
+  display: inline-block;
+  min-width: 26px;
+  text-align: center;
+  padding: 6px 10px;
+  font-weight: 700;
+  color: #4e73df;
+  background: white;
 }
 </style>
