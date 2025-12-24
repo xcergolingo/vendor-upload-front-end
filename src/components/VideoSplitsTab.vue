@@ -22,6 +22,7 @@
         <video controls playsinline webkit-playsinline preload="metadata" :src="split.video_url"></video>
         <div class="actions">
           <template v-if="!split.if_indexed && split.showPriorityInput">
+            <span class="priority-label">Priority score</span>
             <input
               v-model.number="split.priority_score"
               class="priority-input"
@@ -337,5 +338,11 @@ video {
   padding: 8px 10px;
   border-radius: 6px;
   border: 1px solid #ddd;
+}
+
+.priority-label {
+  font-weight: 600;
+  color: #4e73df;
+  align-self: center;
 }
 </style>
