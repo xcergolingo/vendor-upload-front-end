@@ -78,7 +78,11 @@
             <div class="time">
               {{ entry.start }} → {{ entry.end }}
             </div>
-            <p>{{ entry.text }}</p>
+            <div v-if="isTranslated" class="entry-texts">
+              <p v-if="entry.inputText" class="text-line input">{{ entry.inputText }}</p>
+              <p v-if="entry.outputText" class="text-line output">{{ entry.outputText }}</p>
+            </div>
+            <p v-else>{{ entry.text }}</p>
           </div>
         </div>
         <div class="clip-actions">
@@ -122,6 +126,7 @@ const dragTargetIndex = ref(null);
 const srtInput = ref('');
 const inputLang = ref('');
 const outputLang = ref('');
+const editBaseVariant = ref('output');
 const clipLoading = ref(false);
 const clipStatus = ref('');
 const videoRef = ref(null);
@@ -140,7 +145,22 @@ const decodedFileName = computed(() => {
 
 const displayName = computed(() => decodedFileName.value.split('/').pop());
 const videoUrl = computed(() => props.videoUrl || '');
-const editedSrt = computed(() => entriesToSrt(editableEntries.value));
+const editedSrt = computed(() =>
+  entriesToSrt(
+    editableEntries.value.map(entry => ({
+      start: entry.start,
+      end: entry.end,
+      text:
+        editBaseVariant.value === 'input'
+          ? entry.inputText || entry.text || ''
+          : entry.outputText || entry.text || ''
+    }))
+  )
+);
+const editedLang = computed(() => {
+  if (editBaseVariant.value === 'input') return inputLang.value || outputLang.value || 'en';
+  return outputLang.value || inputLang.value || 'en';
+});
 const originalSrtInput = computed(() => srtInput.value || '');
 const isTranslated = computed(
   () =>
@@ -193,6 +213,59 @@ function assignIndexes(entries) {
     ...entry,
     index: String(idx + 1)
   }));
+}
+
+function buildEditableEntries(baseEntries, overlayEntries, baseVariant) {
+  const updatedBase = baseEntries.map(entry => ({
+    ...entry,
+    text: (entry.text || '').trim()
+  }));
+  if (!overlayEntries?.length) {
+    return assignIndexes(updatedBase);
+  }
+
+  const normalizedOverlay = overlayEntries.map(entry => ({
+    ...entry,
+    text: (entry.text || '').trim()
+  }));
+
+  const merged = [];
+  let overlayIndex = 0;
+
+  for (const baseEntry of updatedBase) {
+    let matchedOverlayText = '';
+    while (overlayIndex < normalizedOverlay.length) {
+      const overlayEntry = normalizedOverlay[overlayIndex];
+      if (timestampsMatch(baseEntry, overlayEntry)) {
+        matchedOverlayText = overlayEntry.text || '';
+        overlayIndex += 1;
+        break;
+      }
+      const overlayStart = timestampToMs(overlayEntry.start);
+      const baseStart = timestampToMs(baseEntry.start);
+      if (overlayStart < baseStart - 20) {
+        overlayIndex += 1;
+        continue;
+      }
+      break;
+    }
+
+    if (baseVariant === 'input') {
+      merged.push({
+        ...baseEntry,
+        inputText: baseEntry.text || '',
+        outputText: matchedOverlayText
+      });
+    } else {
+      merged.push({
+        ...baseEntry,
+        inputText: matchedOverlayText,
+        outputText: baseEntry.text || ''
+      });
+    }
+  }
+
+  return assignIndexes(merged);
 }
 
 function timestampToMs(timestamp) {
@@ -424,15 +497,21 @@ async function fetchTranscripts() {
 
     displayEntries.value = cloneEntries(parsedOutput);
 
-    const parsedForEditing =
-      isActuallyTranslated && parsedInput.length
+    const baseVariant = isActuallyTranslated && parsedInput.length ? 'input' : 'output';
+    editBaseVariant.value = baseVariant;
+    const baseEntries =
+      baseVariant === 'input'
         ? parsedInput
         : parsedOutput.length
           ? parsedOutput
           : parsedInput;
+    const overlayEntries = baseVariant === 'input' ? parsedOutput : parsedInput;
+    const editable = isActuallyTranslated
+      ? buildEditableEntries(baseEntries, overlayEntries, baseVariant)
+      : assignIndexes(baseEntries);
 
-    baselineEntries.value = cloneEntries(parsedForEditing);
-    editableEntries.value = cloneEntries(parsedForEditing);
+    baselineEntries.value = cloneEntries(editable);
+    editableEntries.value = cloneEntries(editable);
     clearDragState();
   } catch (err) {
     console.error(err);
@@ -502,14 +581,27 @@ function mergeEntries(sourceIndex, targetIndex) {
   const lower = Math.min(sourceIndex, targetIndex);
   const upper = Math.max(sourceIndex, targetIndex);
   try {
+    const joinField = field =>
+      editableEntries.value
+        .slice(lower, upper + 1)
+        .map(entry => (entry?.[field] || '').trim())
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+
     const merged = {
       start: editableEntries.value[lower].start,
       end: editableEntries.value[upper].end,
-      text: editableEntries.value
-        .slice(lower, upper + 1)
-        .map(entry => entry.text)
-        .join(' ')
+      text: joinField('text')
     };
+    if (isTranslated.value) {
+      merged.inputText = joinField('inputText');
+      merged.outputText = joinField('outputText');
+      merged.text =
+        editBaseVariant.value === 'input'
+          ? merged.inputText || merged.text
+          : merged.outputText || merged.text;
+    }
     const updated = [
       ...editableEntries.value.slice(0, lower),
       merged,
@@ -559,7 +651,7 @@ async function generateClips() {
           key: decodedFileName.value,
           movie_name: decodedFileName.value,
           srt: editedSrt.value,
-          lang: inputLang.value || outputLang.value || 'en',
+          lang: editedLang.value,
           user_name: authState.userEmail
         })
       }
@@ -758,6 +850,26 @@ h2 {
   font-weight: 600;
   color: #4e73df;
   margin-bottom: 6px;
+}
+
+.entry-texts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.text-line {
+  margin: 0;
+  color: #2c3e50;
+}
+
+.text-line.input {
+  color: #1cc88a;
+}
+
+.text-line.output {
+  color: #4e73df;
+  font-weight: 600;
 }
 
 .clip-actions {
