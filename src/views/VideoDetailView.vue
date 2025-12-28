@@ -67,7 +67,7 @@
               'drag-source': dragSourceIndex === index,
               'drag-target': dragTargetIndex === index && canDropOn(index)
             }"
-            draggable="true"
+            :draggable="editingIndex === null"
             @click="handleEditableEntryClick(entry)"
             @dragstart="handleDragStart($event, index)"
             @dragover.prevent="handleDragOver($event, index)"
@@ -75,14 +75,49 @@
             @drop.prevent="handleDrop(index)"
             @dragend="handleDragEnd"
           >
-            <div class="time">
-              {{ entry.start }} → {{ entry.end }}
+            <button
+              type="button"
+              class="edit-entry"
+              @click.stop="startEntryEdit(entry, index)"
+              :disabled="editingIndex !== null && editingIndex !== index"
+            >
+              Edit
+            </button>
+            <div v-if="editingIndex === index" class="entry-editor">
+              <div class="editor-times">
+                <label class="editor-label time">Start</label>
+                <input v-model="draftStart" class="editor-input" type="text" />
+                <label class="editor-label time">End</label>
+                <input v-model="draftEnd" class="editor-input" type="text" />
+              </div>
+              <template v-if="isTranslated">
+                <label class="editor-label input">Input</label>
+                <textarea v-model="draftInputText" class="editor-textarea input" rows="2" />
+                <label class="editor-label output">Output</label>
+                <textarea v-model="draftOutputText" class="editor-textarea output" rows="2" />
+              </template>
+              <template v-else>
+                <textarea v-model="draftSingleText" class="editor-textarea single" rows="3" />
+              </template>
+              <div class="editor-actions">
+                <button type="button" class="editor-btn save" @click.stop="saveEntryEdit(index)">
+                  Save
+                </button>
+                <button type="button" class="editor-btn cancel" @click.stop="cancelEntryEdit">
+                  Cancel
+                </button>
+              </div>
             </div>
-            <div v-if="isTranslated" class="entry-texts">
-              <p v-if="entry.inputText" class="text-line input">{{ entry.inputText }}</p>
-              <p v-if="entry.outputText" class="text-line output">{{ entry.outputText }}</p>
-            </div>
-            <p v-else>{{ entry.text }}</p>
+            <template v-else>
+              <div class="time">
+                {{ entry.start }} → {{ entry.end }}
+              </div>
+              <div v-if="isTranslated" class="entry-texts">
+                <p class="text-line input">{{ entry.inputText || '' }}</p>
+                <p class="text-line output">{{ entry.outputText || '' }}</p>
+              </div>
+              <p v-else>{{ entry.text }}</p>
+            </template>
           </div>
         </div>
         <div class="clip-actions">
@@ -127,6 +162,12 @@ const srtInput = ref('');
 const inputLang = ref('');
 const outputLang = ref('');
 const editBaseVariant = ref('output');
+const editingIndex = ref(null);
+const draftStart = ref('');
+const draftEnd = ref('');
+const draftInputText = ref('');
+const draftOutputText = ref('');
+const draftSingleText = ref('');
 const clipLoading = ref(false);
 const clipStatus = ref('');
 const videoRef = ref(null);
@@ -202,6 +243,7 @@ const isDirty = computed(() => {
 
 function setTab(tab) {
   activeTab.value = tab;
+  cancelEntryEdit();
 }
 
 function cloneEntries(entries) {
@@ -574,7 +616,55 @@ function clearDragState() {
 
 function handleEditableEntryClick(entry) {
   if (Date.now() - lastDragStartAt < 250) return;
+  if (editingIndex.value !== null) return;
   playTranscriptSegment(entry?.start, entry?.end);
+}
+
+function startEntryEdit(entry, index) {
+  editingIndex.value = index;
+  draftStart.value = entry?.start || '';
+  draftEnd.value = entry?.end || '';
+  draftSingleText.value = entry?.text || '';
+  draftInputText.value = entry?.inputText ?? '';
+  draftOutputText.value = entry?.outputText ?? '';
+}
+
+function cancelEntryEdit() {
+  editingIndex.value = null;
+  draftStart.value = '';
+  draftEnd.value = '';
+  draftSingleText.value = '';
+  draftInputText.value = '';
+  draftOutputText.value = '';
+}
+
+function saveEntryEdit(index) {
+  const entry = editableEntries.value[index];
+  if (!entry) return;
+
+  if (isTranslated.value) {
+    const updated = {
+      ...entry,
+      start: draftStart.value,
+      end: draftEnd.value,
+      inputText: draftInputText.value,
+      outputText: draftOutputText.value
+    };
+    updated.text =
+      editBaseVariant.value === 'input'
+        ? updated.inputText || ''
+        : updated.outputText || '';
+    editableEntries.value[index] = updated;
+  } else {
+    editableEntries.value[index] = {
+      ...entry,
+      start: draftStart.value,
+      end: draftEnd.value,
+      text: draftSingleText.value
+    };
+  }
+
+  cancelEntryEdit();
 }
 
 function mergeEntries(sourceIndex, targetIndex) {
@@ -619,6 +709,7 @@ function resetTranscripts() {
     editableEntries.value = cloneEntries(baselineEntries.value);
     clearDragState();
     clipStatus.value = '';
+    cancelEntryEdit();
   } catch (err) {
     console.error(err);
     alert('Unable to reset transcripts.');
@@ -833,6 +924,7 @@ h2 {
   user-select: none;
   box-shadow: 0 6px 18px rgb(0 0 0 / 6%);
   transition: border-color 0.2s ease, transform 0.2s ease;
+  position: relative;
 }
 
 .editable-entry.drag-source {
@@ -850,6 +942,24 @@ h2 {
   font-weight: 600;
   color: #4e73df;
   margin-bottom: 6px;
+}
+
+.edit-entry {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  border: 1px solid #d1d5e6;
+  background: #fff;
+  color: #4e73df;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.edit-entry:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .entry-texts {
@@ -870,6 +980,77 @@ h2 {
 .text-line.output {
   color: #4e73df;
   font-weight: 600;
+}
+
+.entry-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.editor-label {
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.editor-label.input {
+  color: #1cc88a;
+}
+
+.editor-label.output {
+  color: #4e73df;
+}
+
+.editor-label.time {
+  color: #858796;
+}
+
+.editor-times {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.editor-input {
+  border: 1px solid #d1d5e6;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font: inherit;
+  width: 100%;
+}
+
+.editor-textarea {
+  width: 100%;
+  border: 1px solid #d1d5e6;
+  border-radius: 8px;
+  padding: 8px 10px;
+  resize: vertical;
+  font: inherit;
+}
+
+.editor-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.editor-btn {
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.editor-btn.save {
+  background-color: #1cc88a;
+  color: white;
+}
+
+.editor-btn.cancel {
+  background-color: #858796;
+  color: white;
 }
 
 .clip-actions {
