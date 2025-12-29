@@ -198,10 +198,29 @@ const editedSrt = computed(() =>
     }))
   )
 );
+const outputSrt = computed(() =>
+  entriesToSrt(
+    editableEntries.value.map(entry => ({
+      start: entry.start,
+      end: entry.end,
+      text: entry.outputText || entry.text || ''
+    }))
+  )
+);
 const editedLang = computed(() => {
   if (editBaseVariant.value === 'input') return inputLang.value || outputLang.value || 'en';
   return outputLang.value || inputLang.value || 'en';
 });
+const outputLangForPayload = computed(() => outputLang.value || inputLang.value || 'en');
+function normalizeLang(value) {
+  const textValue = String(value ?? '').trim();
+  if (!textValue) return '';
+  const lowered = textValue.toLowerCase();
+  if (lowered === 'none' || lowered === 'null' || lowered === 'undefined') return '';
+  return textValue;
+}
+const cutLang = computed(() => normalizeLang(inputLang.value) || normalizeLang(outputLang.value) || 'en');
+const cutLangTranslation = computed(() => normalizeLang(outputLang.value));
 const originalSrtInput = computed(() => srtInput.value || '');
 const isTranslated = computed(
   () =>
@@ -512,8 +531,14 @@ async function fetchTranscripts() {
       payload && typeof payload.body === 'object' ? payload.body : payload;
     const outputSrtValue = body?.srt || '';
     const inputSrtValue = body?.srt_input || '';
-    const inputLanguage = body?.input_lang || '';
-    const outputLanguage = body?.output_lang || '';
+    const inputLanguage =
+      body?.input_lang ?? body?.lang ?? body?.lang_input ?? body?.input_language ?? '';
+    const outputLanguage =
+      body?.output_lang ??
+      body?.lang_translation ??
+      body?.translated_lang ??
+      body?.output_language ??
+      '';
 
     srtInput.value = inputSrtValue;
     inputLang.value = inputLanguage;
@@ -732,19 +757,33 @@ async function generateClips() {
   clipLoading.value = true;
   clipStatus.value = '';
   try {
+    const cutPayload = {
+      bucket: 'golingo-vendor-video-upload',
+      key: decodedFileName.value,
+      movie_name: decodedFileName.value,
+      srt: editedSrt.value,
+      srt_translation: outputSrt.value,
+      lang: cutLang.value,
+      lang_translation: cutLangTranslation.value,
+      user_name: authState.userEmail
+    };
+    console.log('[vendor/cut] payload summary', {
+      bucket: cutPayload.bucket,
+      key: cutPayload.key,
+      movie_name: cutPayload.movie_name,
+      lang: cutPayload.lang,
+      lang_translation: cutPayload.lang_translation,
+      user_name: cutPayload.user_name,
+      srt_length: cutPayload.srt?.length ?? 0,
+      srt_translation_length: cutPayload.srt_translation?.length ?? 0
+    });
+    console.log('[vendor/cut] payload', cutPayload);
     await fetch(
       'https://ln686uub5b.execute-api.us-east-1.amazonaws.com/prod/vendor/cut',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bucket: 'golingo-vendor-video-upload',
-          key: decodedFileName.value,
-          movie_name: decodedFileName.value,
-          srt: editedSrt.value,
-          lang: editedLang.value,
-          user_name: authState.userEmail
-        })
+        body: JSON.stringify(cutPayload)
       }
     );
     clipStatus.value = 'Clip generation requested.';
