@@ -59,10 +59,10 @@
           <span class="hint">Drag a box onto its neighbor to merge them.</span>
         </div>
         <div class="editable-list">
-          <div
-            v-for="(entry, index) in editableEntries"
-            :key="entry.index + '-' + entry.start + '-' + index"
-            class="editable-entry"
+	          <div
+	            v-for="(entry, index) in editableEntries"
+	            :key="entry.index + '-' + entry.start + '-' + index"
+	            class="editable-entry"
             :class="{
               'drag-source': dragSourceIndex === index,
               'drag-target': dragTargetIndex === index && canDropOn(index)
@@ -72,21 +72,29 @@
             @dragstart="handleDragStart($event, index)"
             @dragover.prevent="handleDragOver($event, index)"
             @dragleave.prevent="handleDragLeave(index)"
-            @drop.prevent="handleDrop(index)"
-            @dragend="handleDragEnd"
-          >
-            <button
-              type="button"
-              class="edit-entry"
-              @click.stop="startEntryEdit(entry, index)"
-              :disabled="editingIndex !== null && editingIndex !== index"
-            >
-              Edit
-            </button>
-            <div v-if="editingIndex === index" class="entry-editor">
-              <div class="editor-times">
-                <label class="editor-label time">Start</label>
-                <input v-model="draftStart" class="editor-input" type="text" />
+	            @drop.prevent="handleDrop(index)"
+	            @dragend="handleDragEnd"
+	          >
+	            <button
+	              type="button"
+	              class="edit-entry"
+	              @click.stop="startEntryEdit(entry, index)"
+	              :disabled="editingIndex !== null && editingIndex !== index"
+	            >
+	              Edit
+	            </button>
+	            <button
+	              type="button"
+	              class="clone-entry"
+	              @click.stop="cloneEntry(index)"
+	              :disabled="editingIndex !== null"
+	            >
+	              Clone
+	            </button>
+	            <div v-if="editingIndex === index" class="entry-editor">
+	              <div class="editor-times">
+	                <label class="editor-label time">Start</label>
+	                <input v-model="draftStart" class="editor-input" type="text" />
                 <label class="editor-label time">End</label>
                 <input v-model="draftEnd" class="editor-input" type="text" />
               </div>
@@ -663,9 +671,9 @@ function cancelEntryEdit() {
   draftOutputText.value = '';
 }
 
-function saveEntryEdit(index) {
-  const entry = editableEntries.value[index];
-  if (!entry) return;
+	function saveEntryEdit(index) {
+	  const entry = editableEntries.value[index];
+	  if (!entry) return;
 
   if (isTranslated.value) {
     const updated = {
@@ -689,13 +697,33 @@ function saveEntryEdit(index) {
     };
   }
 
-  cancelEntryEdit();
-}
+	  cancelEntryEdit();
+	}
 
-function mergeEntries(sourceIndex, targetIndex) {
-  const lower = Math.min(sourceIndex, targetIndex);
-  const upper = Math.max(sourceIndex, targetIndex);
-  try {
+	function cloneEntry(index) {
+	  if (editingIndex.value !== null) return;
+	  const entry = editableEntries.value[index];
+	  if (!entry) return;
+	  try {
+	    clearDragState();
+	    const cloned = { ...entry };
+	    delete cloned.index;
+	    const updated = [
+	      ...editableEntries.value.slice(0, index + 1),
+	      cloned,
+	      ...editableEntries.value.slice(index + 1)
+	    ];
+	    editableEntries.value = assignIndexes(updated);
+	  } catch (err) {
+	    console.error(err);
+	    alert('Unable to clone this entry.');
+	  }
+	}
+
+	function mergeEntries(sourceIndex, targetIndex) {
+	  const lower = Math.min(sourceIndex, targetIndex);
+	  const upper = Math.max(sourceIndex, targetIndex);
+	  try {
     const joinField = field =>
       editableEntries.value
         .slice(lower, upper + 1)
@@ -996,16 +1024,34 @@ h2 {
   cursor: pointer;
 }
 
-.edit-entry:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
+	.edit-entry:disabled {
+	  opacity: 0.4;
+	  cursor: not-allowed;
+	}
 
-.entry-texts {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
+	.clone-entry {
+	  position: absolute;
+	  top: 38px;
+	  right: 10px;
+	  border: 1px solid #d1d5e6;
+	  background: #fff;
+	  color: #858796;
+	  border-radius: 999px;
+	  padding: 2px 10px;
+	  font-weight: 600;
+	  cursor: pointer;
+	}
+
+	.clone-entry:disabled {
+	  opacity: 0.4;
+	  cursor: not-allowed;
+	}
+
+	.entry-texts {
+	  display: flex;
+	  flex-direction: column;
+	  gap: 4px;
+	}
 
 .text-line {
   margin: 0;
