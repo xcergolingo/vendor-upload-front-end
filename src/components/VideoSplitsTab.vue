@@ -75,6 +75,30 @@
       </li>
       <li v-if="!splits.length" class="info">No splits found.</li>
     </ul>
+
+    <div v-if="showDownloadDialog" class="download-overlay" @click.self="closeDownloadDialog">
+      <div class="download-dialog" role="dialog" aria-modal="true" aria-label="Download options">
+        <h3>Download options</h3>
+        <label>
+          Movie title
+          <input v-model.trim="downloadMovieTitle" type="text" placeholder="Movie title" />
+        </label>
+        <label>
+          Chapter no.
+          <select v-model.number="downloadChapterNo">
+            <option v-for="n in 30" :key="n" :value="n">{{ n }}</option>
+          </select>
+        </label>
+        <label>
+          Tags (comma separated)
+          <input v-model.trim="downloadCustomTags" type="text" placeholder="tag1, tag2" />
+        </label>
+        <div class="download-dialog-actions">
+          <button class="secondary" type="button" @click="closeDownloadDialog">Cancel</button>
+          <button class="primary" type="button" @click="confirmDownload">Download</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -93,6 +117,10 @@ const loading = ref(false);
 const error = ref('');
 const downloadSelections = ref([]);
 const downloadIds = ref(new Set());
+const showDownloadDialog = ref(false);
+const downloadMovieTitle = ref('');
+const downloadChapterNo = ref(1);
+const downloadCustomTags = ref('');
 
 function resetDownloadState() {
   downloadSelections.value = [];
@@ -151,15 +179,52 @@ function addToDownload(split) {
     sent_translation: split.sent_translation || split.sent_transation || '',
     lang: split.lang || '',
     lang_translation: split.lang_translation || '',
-    video_url: split.video_url || ''
+    video_url: split.video_url || '',
+    timestamp: split.timestamp ?? null
   });
   downloadIds.value = new Set(downloadIds.value).add(id);
 }
 
 function downloadSelected() {
   if (!downloadSelections.value.length) return;
-  const tags = window.prompt('Enter tags for these items (string):', '');
-  if (tags === null) return;
+  showDownloadDialog.value = true;
+}
+
+function closeDownloadDialog() {
+  showDownloadDialog.value = false;
+}
+
+function buildTagsString(movieTitle, chapterNo, customTags) {
+  const parts = [];
+  const title = String(movieTitle || '').trim();
+  if (title) parts.push(title);
+  const chapter = Number(chapterNo);
+  if (Number.isInteger(chapter) && chapter > 0) parts.push(`chapter${chapter}`);
+  const tags = String(customTags || '')
+    .split(',')
+    .map(tag => tag.trim())
+    .filter(Boolean);
+  parts.push(...tags);
+  return parts.join(',');
+}
+
+function confirmDownload() {
+  const tags = buildTagsString(
+    downloadMovieTitle.value,
+    downloadChapterNo.value,
+    downloadCustomTags.value
+  );
+  if (!tags) {
+    alert('Please enter at least a movie title or a tag.');
+    return;
+  }
+  const chapterNo = Number(downloadChapterNo.value);
+  if (!Number.isInteger(chapterNo) || chapterNo < 1 || chapterNo > 30) {
+    alert('Please select a chapter number between 1 and 30.');
+    return;
+  }
+
+  closeDownloadDialog();
   const languageDisplayName = value => {
     const normalized = String(value || '').trim().toLowerCase();
     if (!normalized) return '';
@@ -183,9 +248,22 @@ function downloadSelected() {
   };
   const first = downloadSelections.value[0] || {};
   const courseName = `${languageDisplayName(first.lang_translation)} -> ${languageDisplayName(first.lang)}`.trim();
+
+  const sortedSelections = [...downloadSelections.value].sort((a, b) => {
+    const aValue = Number(a?.timestamp);
+    const bValue = Number(b?.timestamp);
+    const aFinite = Number.isFinite(aValue);
+    const bFinite = Number.isFinite(bValue);
+    if (aFinite && bFinite) return aValue - bValue;
+    if (aFinite) return -1;
+    if (bFinite) return 1;
+    return 0;
+  });
+
+  const formatIndex = index => String(index).padStart(2, '0');
   const payload = {
     courseName,
-    contents: downloadSelections.value.map((selection, index) => ({
+    contents: sortedSelections.map((selection, index) => ({
       mPhoneticStory: '',
       mVideoUrl: selection.video_url,
       mTags: tags,
@@ -193,7 +271,7 @@ function downloadSelected() {
       mWebLink: '',
       mContent: selection.sent,
       mTranslatedContent: selection.sent_translation || '',
-      mIndices: String(index + 1),
+      mIndices: `${chapterNo}${formatIndex(index + 1)}00`,
       mImageStr: '',
       mPhoneticInfo: '',
       mOnlineTranslation: ''
@@ -338,6 +416,58 @@ watch(
 
 .error {
   color: #e74a3b;
+}
+
+.download-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 50;
+}
+
+.download-dialog {
+  width: 100%;
+  max-width: 520px;
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 10px 25px rgb(0 0 0 / 15%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.download-dialog h3 {
+  margin: 0;
+}
+
+.download-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 600;
+  color: #858796;
+}
+
+.download-dialog input,
+.download-dialog select {
+  border: 1px solid #d1d3e2;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #111827;
+}
+
+.download-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
 }
 
 .split-list {
