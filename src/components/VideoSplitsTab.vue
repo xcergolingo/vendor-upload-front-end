@@ -19,6 +19,9 @@
     <ul v-else class="split-list">
       <li v-for="split in splits" :key="getSplitId(split)" class="split-card">
         <div class="sentence">{{ split.sent }}</div>
+        <div v-if="split.sent_translation || split.sent_transation" class="sentence translation">
+          {{ split.sent_translation || split.sent_transation }}
+        </div>
         <video controls playsinline webkit-playsinline preload="metadata" :src="split.video_url"></video>
         <div class="actions">
           <template v-if="!split.if_indexed && split.showPriorityInput">
@@ -145,6 +148,9 @@ function addToDownload(split) {
   downloadSelections.value.push({
     id,
     sent: split.sent || '',
+    sent_translation: split.sent_translation || split.sent_transation || '',
+    lang: split.lang || '',
+    lang_translation: split.lang_translation || '',
     video_url: split.video_url || ''
   });
   downloadIds.value = new Set(downloadIds.value).add(id);
@@ -152,17 +158,42 @@ function addToDownload(split) {
 
 function downloadSelected() {
   if (!downloadSelections.value.length) return;
+  const tags = window.prompt('Enter tags for these items (string):', '');
+  if (tags === null) return;
+  const languageDisplayName = value => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) return '';
+    const known = {
+      en: 'English',
+      zh: 'Chinese',
+      zh_cn: 'Chinese',
+      zh_tw: 'Chinese',
+      es: 'Spanish',
+      fr: 'French',
+      de: 'German',
+      it: 'Italian',
+      ja: 'Japanese',
+      ko: 'Korean',
+      pt: 'Portuguese',
+      ru: 'Russian',
+      ar: 'Arabic',
+      hi: 'Hindi'
+    };
+    return known[normalized] || value;
+  };
+  const first = downloadSelections.value[0] || {};
+  const courseName = `${languageDisplayName(first.lang_translation)} -> ${languageDisplayName(first.lang)}`.trim();
   const payload = {
-    courseName: '',
-    contents: downloadSelections.value.map(selection => ({
+    courseName,
+    contents: downloadSelections.value.map((selection, index) => ({
       mPhoneticStory: '',
       mVideoUrl: selection.video_url,
-      mTags: '',
+      mTags: tags,
       mWebName: '',
       mWebLink: '',
       mContent: selection.sent,
-      mTranslatedContent: '',
-      mIndices: '',
+      mTranslatedContent: selection.sent_translation || '',
+      mIndices: String(index + 1),
       mImageStr: '',
       mPhoneticInfo: '',
       mOnlineTranslation: ''
@@ -174,7 +205,7 @@ function downloadSelected() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'video_splits.json';
+  link.download = 'video_splits.golingocontent';
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -250,6 +281,12 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.sentence.translation {
+  color: #6b7280;
+  font-size: 14px;
+  margin-top: 6px;
 }
 
 .toolbar {
