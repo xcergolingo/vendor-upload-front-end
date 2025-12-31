@@ -66,6 +66,7 @@ const props = defineProps({
 });
 
 const languages = [
+  { code: 'auto', label: 'Auto' },
   { code: 'en', label: 'English' },
   { code: 'zh', label: 'Chinese' },
   { code: 'es', label: 'Spanish' },
@@ -87,8 +88,8 @@ const languages = [
 
 const fileInput = ref(null);
 const selectedFile = ref(null);
-const language = ref('en');
-const outputLanguage = ref('en');
+const language = ref('auto');
+const outputLanguage = ref('auto');
 const sentence = ref('');
 const indexValue = ref('');
 const tags = ref('');
