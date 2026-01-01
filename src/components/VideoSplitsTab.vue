@@ -19,8 +19,8 @@
     <ul v-else class="split-list">
       <li v-for="split in splits" :key="getSplitId(split)" class="split-card">
         <div class="sentence">{{ split.sent }}</div>
-        <div v-if="split.sent_translation || split.sent_transation" class="sentence translation">
-          {{ split.sent_translation || split.sent_transation }}
+        <div v-if="shouldShowTranslation(split)" class="sentence translation">
+          {{ translationText(split) }}
         </div>
         <video controls playsinline webkit-playsinline preload="metadata" :src="split.video_url"></video>
         <div class="actions">
@@ -122,6 +122,30 @@ const downloadMovieTitle = ref('');
 const downloadChapterNo = ref(1);
 const downloadCustomTags = ref('');
 
+function normalizeLanguageCode(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function translationLanguage(split) {
+  return split?.lang_translation || split?.lang_transation || '';
+}
+
+function translationText(split) {
+  return split?.sent_translation || split?.sent_transation || '';
+}
+
+function isSameLanguage(split) {
+  const inputLang = normalizeLanguageCode(split?.lang);
+  const outputLang = normalizeLanguageCode(translationLanguage(split));
+  return Boolean(inputLang && outputLang && inputLang === outputLang);
+}
+
+function shouldShowTranslation(split) {
+  const text = translationText(split);
+  if (!text) return false;
+  return !isSameLanguage(split);
+}
+
 function resetDownloadState() {
   downloadSelections.value = [];
   downloadIds.value = new Set();
@@ -173,12 +197,13 @@ function isInDownload(split) {
 function addToDownload(split) {
   if (isInDownload(split)) return;
   const id = getSplitId(split);
+  const sameLanguage = isSameLanguage(split);
   downloadSelections.value.push({
     id,
     sent: split.sent || '',
-    sent_translation: split.sent_translation || split.sent_transation || '',
+    sent_translation: sameLanguage ? '' : translationText(split),
     lang: split.lang || '',
-    lang_translation: split.lang_translation || '',
+    lang_translation: sameLanguage ? '' : translationLanguage(split),
     video_url: split.video_url || '',
     timestamp: split.timestamp ?? null
   });
@@ -247,7 +272,12 @@ function confirmDownload() {
     return known[normalized] || value;
   };
   const first = downloadSelections.value[0] || {};
-  const courseName = `${languageDisplayName(first.lang_translation)} -> ${languageDisplayName(first.lang)}`.trim();
+  const firstLang = normalizeLanguageCode(first.lang);
+  const firstTranslationLang = normalizeLanguageCode(first.lang_translation);
+  const courseName =
+    firstLang && firstTranslationLang && firstLang !== firstTranslationLang
+      ? `${languageDisplayName(first.lang_translation)} -> ${languageDisplayName(first.lang)}`.trim()
+      : languageDisplayName(first.lang);
 
   const sortedSelections = [...downloadSelections.value].sort((a, b) => {
     const aValue = Number(a?.timestamp);
@@ -263,19 +293,24 @@ function confirmDownload() {
   const formatIndex = index => String(index).padStart(2, '0');
   const payload = {
     courseName,
-    contents: sortedSelections.map((selection, index) => ({
-      mPhoneticStory: '',
-      mVideoUrl: selection.video_url,
-      mTags: tags,
-      mWebName: '',
-      mWebLink: '',
-      mContent: selection.sent,
-      mTranslatedContent: selection.sent_translation || '',
-      mIndices: `${chapterNo}${formatIndex(index + 1)}00`,
-      mImageStr: '',
-      mPhoneticInfo: '',
-      mOnlineTranslation: ''
-    }))
+    contents: sortedSelections.map((selection, index) => {
+      const inputLang = normalizeLanguageCode(selection?.lang);
+      const outputLang = normalizeLanguageCode(selection?.lang_translation);
+      const sameLanguage = Boolean(inputLang && outputLang && inputLang === outputLang);
+      return {
+        mPhoneticStory: '',
+        mVideoUrl: selection.video_url,
+        mTags: tags,
+        mWebName: '',
+        mWebLink: '',
+        mContent: selection.sent,
+        mTranslatedContent: sameLanguage ? '' : selection.sent_translation || '',
+        mIndices: `${chapterNo}${formatIndex(index + 1)}00`,
+        mImageStr: '',
+        mPhoneticInfo: '',
+        mOnlineTranslation: ''
+      };
+    })
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: 'application/json'
