@@ -1166,6 +1166,27 @@ h2 {
 	  cursor: not-allowed;
 	}
 
+@media (max-width: 480px) {
+  .editable-entry {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .edit-entry,
+  .clone-entry {
+    position: static;
+    margin-left: auto;
+  }
+
+  .edit-entry {
+    margin-bottom: 6px;
+  }
+
+  .clone-entry {
+    margin-bottom: 10px;
+  }
+}
+
 	.entry-texts {
 	  display: flex;
 	  flex-direction: column;
