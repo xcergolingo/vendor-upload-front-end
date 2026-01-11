@@ -71,6 +71,20 @@
           >
             {{ isInDownload(split) ? 'Added' : 'Add to download' }}
           </button>
+          <button
+            class="danger small"
+            type="button"
+            :disabled="
+              split.isIndexing ||
+              split.isDeleting ||
+              split.timestamp === undefined ||
+              split.timestamp === null ||
+              split.timestamp === ''
+            "
+            @click="deleteSplit(split)"
+          >
+            {{ split.isDeleting ? 'Deleting...' : 'Delete' }}
+          </button>
         </div>
       </li>
       <li v-if="!splits.length" class="info">No splits found.</li>
@@ -178,6 +192,7 @@ async function fetchSplits() {
     splits.value = (payload?.body || []).map(split => ({
       ...split,
       isIndexing: false,
+      isDeleting: false,
       showPriorityInput: false,
       priority_score: 1
     }));
@@ -187,6 +202,37 @@ async function fetchSplits() {
     error.value = 'Unable to load video splits. Please try again.';
   } finally {
     loading.value = false;
+  }
+}
+
+async function deleteSplit(split) {
+  if (!props.userEmail || split.isDeleting || split.isIndexing) return;
+  if (split.timestamp === undefined || split.timestamp === null || split.timestamp === '') {
+    alert('Unable to delete this split because it is missing a timestamp.');
+    return;
+  }
+  const confirmed = window.confirm('Delete this video split from the database? This cannot be undone.');
+  if (!confirmed) return;
+
+  split.isDeleting = true;
+  try {
+    const response = await fetch(
+      'https://igr9sg55zi.execute-api.us-east-1.amazonaws.com/prod/delete-video-split-clip-and-sentence',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_name: props.userEmail, timestamp: split.timestamp })
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Request failed');
+    }
+    await fetchSplits();
+  } catch (err) {
+    console.error(err);
+    alert('Failed to delete this split. Please try again.');
+  } finally {
+    split.isDeleting = false;
   }
 }
 
@@ -557,6 +603,16 @@ video {
 .actions .secondary {
   background-color: #36b9cc;
   color: white;
+}
+
+.actions .danger {
+  background-color: #e74a3b;
+  color: white;
+}
+
+.actions .small {
+  padding: 6px 10px;
+  font-size: 0.9rem;
 }
 
 .actions button:disabled {
