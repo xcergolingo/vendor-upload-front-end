@@ -183,6 +183,8 @@ const showTabLabel = 'Show transcripts';
 let videoSegmentEndSeconds = null;
 let videoTimeUpdateHandler = null;
 let lastDragStartAt = 0;
+const transcriptDraftStorageKey = ref('');
+const isSyncingTranscriptState = ref(false);
 
 const decodedFileName = computed(() => {
   try {
@@ -267,6 +269,100 @@ const isDirty = computed(() => {
   const editedString = JSON.stringify(editableEntries.value);
   return originalString !== editedString;
 });
+
+function getLocalStorage() {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage ?? null;
+}
+
+function buildTranscriptDraftStorageKey(email, fileName) {
+  const safeEmail = encodeURIComponent(String(email ?? '').trim());
+  const safeFileName = encodeURIComponent(String(fileName ?? '').trim());
+  return `golingo.vendor.transcriptDraft.v1:${safeEmail}:${safeFileName}`;
+}
+
+function normalizeDraftEntries(entries) {
+  const safeEntries = Array.isArray(entries) ? entries : [];
+  return safeEntries.map(entry => {
+    const start = String(entry?.start ?? '');
+    const end = String(entry?.end ?? '');
+    if (isTranslated.value) {
+      const inputText = String(entry?.inputText ?? '');
+      const outputText = String(entry?.outputText ?? '');
+      const text = editBaseVariant.value === 'input' ? inputText : outputText;
+      return { start, end, text, inputText, outputText };
+    }
+    const text = String(entry?.text ?? '');
+    return { start, end, text };
+  });
+}
+
+function computeDraftBaselineHash(entries) {
+  const stableEntries = (Array.isArray(entries) ? entries : []).map(entry => ({
+    start: entry?.start ?? '',
+    end: entry?.end ?? '',
+    text: entry?.text ?? '',
+    inputText: entry?.inputText ?? '',
+    outputText: entry?.outputText ?? ''
+  }));
+  const json = JSON.stringify(stableEntries);
+  let hash = 5381;
+  for (let idx = 0; idx < json.length; idx += 1) {
+    hash = (hash * 33) ^ json.charCodeAt(idx);
+  }
+  return (hash >>> 0).toString(16);
+}
+
+function loadTranscriptDraft() {
+  const storage = getLocalStorage();
+  if (!storage) return null;
+  if (!transcriptDraftStorageKey.value) return null;
+  try {
+    const raw = storage.getItem(transcriptDraftStorageKey.value);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.v !== 1) return null;
+    return parsed;
+  } catch (err) {
+    console.warn('Unable to load transcript draft.', err);
+    return null;
+  }
+}
+
+function clearTranscriptDraft() {
+  const storage = getLocalStorage();
+  if (!storage) return;
+  if (!transcriptDraftStorageKey.value) return;
+  try {
+    storage.removeItem(transcriptDraftStorageKey.value);
+  } catch (err) {
+    console.warn('Unable to clear transcript draft.', err);
+  }
+}
+
+function saveTranscriptDraft() {
+  const storage = getLocalStorage();
+  if (!storage) return;
+  if (!transcriptDraftStorageKey.value) return;
+  if (!baselineEntries.value.length) return;
+
+  if (!isDirty.value) {
+    clearTranscriptDraft();
+    return;
+  }
+
+  try {
+    const payload = {
+      v: 1,
+      updatedAt: Date.now(),
+      baselineHash: computeDraftBaselineHash(baselineEntries.value),
+      entries: normalizeDraftEntries(editableEntries.value)
+    };
+    storage.setItem(transcriptDraftStorageKey.value, JSON.stringify(payload));
+  } catch (err) {
+    console.warn('Unable to save transcript draft.', err);
+  }
+}
 
 function setTab(tab) {
   activeTab.value = tab;
@@ -519,6 +615,7 @@ async function fetchTranscripts() {
   }
   loading.value = true;
   error.value = '';
+  isSyncingTranscriptState.value = true;
   try {
     const response = await fetch(
       'https://ln686uub5b.execute-api.us-east-1.amazonaws.com/prod/vendor/show-video-transcripts',
@@ -567,6 +664,7 @@ async function fetchTranscripts() {
       baselineEntries.value = [];
       displayEntries.value = [];
       editableEntries.value = [];
+      transcriptDraftStorageKey.value = '';
       return;
     }
 
@@ -587,11 +685,22 @@ async function fetchTranscripts() {
 
     baselineEntries.value = cloneEntries(editable);
     editableEntries.value = cloneEntries(editable);
+    transcriptDraftStorageKey.value = buildTranscriptDraftStorageKey(
+      authState.userEmail,
+      decodedFileName.value
+    );
+
+    const draft = loadTranscriptDraft();
+    if (draft?.entries?.length && draft.baselineHash === computeDraftBaselineHash(baselineEntries.value)) {
+      editableEntries.value = assignIndexes(normalizeDraftEntries(draft.entries));
+    }
+
     clearDragState();
   } catch (err) {
     console.error(err);
     error.value = 'Failed to fetch transcripts. Please try again.';
   } finally {
+    isSyncingTranscriptState.value = false;
     loading.value = false;
   }
 }
@@ -760,6 +869,7 @@ function cancelEntryEdit() {
 function resetTranscripts() {
   try {
     editableEntries.value = cloneEntries(baselineEntries.value);
+    clearTranscriptDraft();
     clearDragState();
     clipStatus.value = '';
     cancelEntryEdit();
@@ -832,6 +942,15 @@ watch(
     }
   },
   { immediate: true }
+);
+
+watch(
+  () => editableEntries.value,
+  () => {
+    if (isSyncingTranscriptState.value) return;
+    saveTranscriptDraft();
+  },
+  { deep: true }
 );
 
 onMounted(() => {
