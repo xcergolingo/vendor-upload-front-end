@@ -3,7 +3,7 @@
     <div class="toolbar">
       <h2>Video Splits & Sentences</h2>
       <div class="toolbar-actions">
-        <button class="secondary" @click="fetchSplits" :disabled="loading">
+        <button class="secondary" @click="fetchSplits" :disabled="loading || loadingMore">
           {{ loading ? 'Refreshing...' : 'Refresh' }}
         </button>
         <button class="primary" @click="downloadSelected" :disabled="downloadSelections.length === 0">
@@ -90,6 +90,19 @@
       <li v-if="!splits.length" class="info">No splits found.</li>
     </ul>
 
+    <div v-if="!loading && !error && splits.length" class="pagination">
+      <button
+        v-if="nextPageToken"
+        class="secondary"
+        type="button"
+        :disabled="loadingMore"
+        @click="loadMoreSplits"
+      >
+        {{ loadingMore ? 'Loading...' : 'Load more' }}
+      </button>
+      <p v-if="loadMoreError" class="error load-more-error">{{ loadMoreError }}</p>
+    </div>
+
     <div v-if="showDownloadDialog" class="download-overlay" @click.self="closeDownloadDialog">
       <div class="download-dialog" role="dialog" aria-modal="true" aria-label="Download options">
         <h3>Download options</h3>
@@ -126,15 +139,20 @@ const props = defineProps({
   }
 });
 
+const PAGE_SIZE = 50;
+
 const splits = ref([]);
 const loading = ref(false);
+const loadingMore = ref(false);
 const error = ref('');
+const loadMoreError = ref('');
 const downloadSelections = ref([]);
 const downloadIds = ref(new Set());
 const showDownloadDialog = ref(false);
 const downloadMovieTitle = ref('');
 const downloadChapterNo = ref(1);
 const downloadCustomTags = ref('');
+const nextPageToken = ref(null);
 
 function normalizeLanguageCode(value) {
   return String(value || '').trim().toLowerCase();
@@ -172,37 +190,86 @@ function getSplitId(split) {
   return `${split.video_url || ''}__${split.sent || ''}`;
 }
 
-async function fetchSplits() {
+function decorateSplit(split) {
+  return {
+    ...split,
+    isIndexing: false,
+    isDeleting: false,
+    showPriorityInput: false,
+    priority_score: 1
+  };
+}
+
+function mergeSplits(existingSplits, incomingSplits) {
+  const byId = new Map();
+  existingSplits.forEach(split => {
+    byId.set(getSplitId(split), split);
+  });
+  incomingSplits.forEach(split => {
+    const id = getSplitId(split);
+    if (!byId.has(id)) {
+      byId.set(id, split);
+    }
+  });
+  return Array.from(byId.values());
+}
+
+async function fetchSplits(options = {}) {
+  const { append = false } = options;
   if (!props.userEmail) return;
-  loading.value = true;
-  error.value = '';
+  if (append) {
+    if (!nextPageToken.value || loadingMore.value || loading.value) return;
+    loadingMore.value = true;
+    loadMoreError.value = '';
+  } else {
+    loading.value = true;
+    error.value = '';
+    loadMoreError.value = '';
+    nextPageToken.value = null;
+  }
   try {
+    const requestBody = {
+      user_name: props.userEmail,
+      page_size: PAGE_SIZE
+    };
+    if (append) {
+      requestBody.page_token = nextPageToken.value;
+    }
+
     const response = await fetch(
       'https://igr9sg55zi.execute-api.us-east-1.amazonaws.com/prod/list-latest-video-splits-and-sentences',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_name: props.userEmail })
+        body: JSON.stringify(requestBody)
       }
     );
     if (!response.ok) {
       throw new Error('Request failed');
     }
     const payload = await response.json();
-    splits.value = (payload?.body || []).map(split => ({
-      ...split,
-      isIndexing: false,
-      isDeleting: false,
-      showPriorityInput: false,
-      priority_score: 1
-    }));
-    resetDownloadState();
+    const pageSplits = (payload?.body || []).map(decorateSplit);
+    splits.value = append ? mergeSplits(splits.value, pageSplits) : pageSplits;
+    nextPageToken.value = payload?.next_page_token ?? null;
+    if (!append) resetDownloadState();
   } catch (err) {
     console.error(err);
-    error.value = 'Unable to load video splits. Please try again.';
+    if (append) {
+      loadMoreError.value = 'Unable to load more video splits. Please try again.';
+    } else {
+      error.value = 'Unable to load video splits. Please try again.';
+    }
   } finally {
-    loading.value = false;
+    if (append) {
+      loadingMore.value = false;
+    } else {
+      loading.value = false;
+    }
   }
+}
+
+function loadMoreSplits() {
+  fetchSplits({ append: true });
 }
 
 async function deleteSplit(split) {
@@ -491,12 +558,37 @@ watch(
   margin-bottom: 4px;
 }
 
+.pagination {
+  display: flex;
+  justify-content: center;
+}
+
+.pagination button.secondary {
+  border: none;
+  border-radius: 6px;
+  padding: 10px 18px;
+  font-weight: 600;
+  cursor: pointer;
+  background-color: #858796;
+  color: white;
+}
+
+.pagination button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .info {
   color: #4e73df;
 }
 
 .error {
   color: #e74a3b;
+}
+
+.load-more-error {
+  margin: 0 0 0 12px;
+  align-self: center;
 }
 
 .download-overlay {
