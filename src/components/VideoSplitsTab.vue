@@ -23,6 +23,11 @@
           {{ translationText(split) }}
         </div>
         <video controls playsinline webkit-playsinline preload="metadata" :src="split.video_url"></video>
+        <p v-if="split.video_url" class="video-url">
+          <a :href="split.video_url" target="_blank" rel="noopener noreferrer">
+            {{ split.video_url }}
+          </a>
+        </p>
         <div class="actions">
           <template v-if="!split.if_indexed && split.showPriorityInput">
             <span class="priority-label">Priority score</span>
@@ -671,6 +676,18 @@ watch(
 video {
   width: 100%;
   border-radius: 6px;
+}
+
+.video-url {
+  font-size: 0.85rem;
+  color: #6b7280;
+  word-break: break-word;
+  margin: 0;
+}
+
+.video-url a {
+  color: inherit;
+  text-decoration: underline;
 }
 
 .actions {
