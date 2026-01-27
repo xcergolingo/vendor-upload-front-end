@@ -28,10 +28,6 @@
       </select>
     </label>
     <label>
-      Sentence
-      <input v-model.trim="sentence" type="text" placeholder="Sentence associated with the video" required />
-    </label>
-    <label>
       Index (Optional)
       <input v-model.trim="indexValue" type="number" min="0" step="any" placeholder="0" />
     </label>
@@ -90,7 +86,6 @@ const fileInput = ref(null);
 const selectedFile = ref(null);
 const language = ref('auto');
 const outputLanguage = ref('auto');
-const sentence = ref('');
 const indexValue = ref('');
 const tags = ref('');
 const weblink = ref('');
@@ -123,7 +118,7 @@ async function handleSubmit() {
     filename: selectedFile.value.name,
     lang: language.value,
     output_lang: outputLanguage.value,
-    theme_title: sentence.value
+    theme_title: selectedFile.value.name
   };
 
   if (indexValue.value) requestBody.index = indexValue.value;
@@ -153,7 +148,6 @@ async function handleSubmit() {
     if (fileInput.value) {
       fileInput.value.value = '';
     }
-    sentence.value = '';
     indexValue.value = '';
     tags.value = '';
     weblink.value = '';
