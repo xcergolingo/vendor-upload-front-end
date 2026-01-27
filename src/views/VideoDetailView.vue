@@ -183,8 +183,9 @@ const showTabLabel = 'Show transcripts';
 let videoSegmentEndSeconds = null;
 let videoTimeUpdateHandler = null;
 let lastDragStartAt = 0;
-const transcriptDraftStorageKey = ref('');
 const isSyncingTranscriptState = ref(false);
+let uploadTimer = null;
+let lastUploadedSrt = '';
 
 const decodedFileName = computed(() => {
   try {
@@ -270,98 +271,41 @@ const isDirty = computed(() => {
   return originalString !== editedString;
 });
 
-function getLocalStorage() {
-  if (typeof window === 'undefined') return null;
-  return window.localStorage ?? null;
-}
-
-function buildTranscriptDraftStorageKey(email, fileName) {
-  const safeEmail = encodeURIComponent(String(email ?? '').trim());
-  const safeFileName = encodeURIComponent(String(fileName ?? '').trim());
-  return `golingo.vendor.transcriptDraft.v1:${safeEmail}:${safeFileName}`;
-}
-
-function normalizeDraftEntries(entries) {
-  const safeEntries = Array.isArray(entries) ? entries : [];
-  return safeEntries.map(entry => {
-    const start = String(entry?.start ?? '');
-    const end = String(entry?.end ?? '');
-    if (isTranslated.value) {
-      const inputText = String(entry?.inputText ?? '');
-      const outputText = String(entry?.outputText ?? '');
-      const text = editBaseVariant.value === 'input' ? inputText : outputText;
-      return { start, end, text, inputText, outputText };
-    }
-    const text = String(entry?.text ?? '');
-    return { start, end, text };
-  });
-}
-
-function computeDraftBaselineHash(entries) {
-  const stableEntries = (Array.isArray(entries) ? entries : []).map(entry => ({
-    start: entry?.start ?? '',
-    end: entry?.end ?? '',
-    text: entry?.text ?? '',
-    inputText: entry?.inputText ?? '',
-    outputText: entry?.outputText ?? ''
-  }));
-  const json = JSON.stringify(stableEntries);
-  let hash = 5381;
-  for (let idx = 0; idx < json.length; idx += 1) {
-    hash = (hash * 33) ^ json.charCodeAt(idx);
-  }
-  return (hash >>> 0).toString(16);
-}
-
-function loadTranscriptDraft() {
-  const storage = getLocalStorage();
-  if (!storage) return null;
-  if (!transcriptDraftStorageKey.value) return null;
-  try {
-    const raw = storage.getItem(transcriptDraftStorageKey.value);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || parsed.v !== 1) return null;
-    return parsed;
-  } catch (err) {
-    console.warn('Unable to load transcript draft.', err);
-    return null;
-  }
-}
-
-function clearTranscriptDraft() {
-  const storage = getLocalStorage();
-  if (!storage) return;
-  if (!transcriptDraftStorageKey.value) return;
-  try {
-    storage.removeItem(transcriptDraftStorageKey.value);
-  } catch (err) {
-    console.warn('Unable to clear transcript draft.', err);
-  }
-}
-
-function saveTranscriptDraft() {
-  const storage = getLocalStorage();
-  if (!storage) return;
-  if (!transcriptDraftStorageKey.value) return;
+async function uploadEditedTranscript() {
+  if (!authState.userEmail) return;
+  if (!decodedFileName.value) return;
   if (!baselineEntries.value.length) return;
 
-  if (!isDirty.value) {
-    clearTranscriptDraft();
-    return;
-  }
+  const payloadSrt = isDirty.value ? editedSrt.value : '';
+  if (payloadSrt === lastUploadedSrt) return;
+  lastUploadedSrt = payloadSrt;
 
   try {
-    const payload = {
-      v: 1,
-      updatedAt: Date.now(),
-      baselineHash: computeDraftBaselineHash(baselineEntries.value),
-      entries: normalizeDraftEntries(editableEntries.value)
-    };
-    storage.setItem(transcriptDraftStorageKey.value, JSON.stringify(payload));
+    await fetch(
+      'https://ln686uub5b.execute-api.us-east-1.amazonaws.com/prod/vendor/upload-edited-srt',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: authState.userEmail,
+          file_name: decodedFileName.value,
+          srt_edited: payloadSrt
+        })
+      }
+    );
   } catch (err) {
-    console.warn('Unable to save transcript draft.', err);
+    console.error('Failed to upload edited transcripts.', err);
   }
+}
+
+function scheduleEditedTranscriptUpload() {
+  if (isSyncingTranscriptState.value) return;
+  if (uploadTimer) {
+    clearTimeout(uploadTimer);
+  }
+  uploadTimer = setTimeout(() => {
+    uploadEditedTranscript();
+  }, 600);
 }
 
 function setTab(tab) {
@@ -632,9 +576,17 @@ async function fetchTranscripts() {
       throw new Error('Request failed');
     }
     const payload = await response.json();
-    const body =
+    let body =
       payload && typeof payload.body === 'object' ? payload.body : payload;
+    if (payload && typeof payload.body === 'string') {
+      try {
+        body = JSON.parse(payload.body);
+      } catch (err) {
+        console.warn('Unable to parse transcript response body.', err);
+      }
+    }
     const outputSrtValue = body?.srt || '';
+    const editedSrtValue = body?.srt_edited || '';
     const inputSrtValue = body?.srt_input || '';
     const inputLanguage =
       body?.input_lang ?? body?.lang ?? body?.lang_input ?? body?.input_language ?? '';
@@ -654,17 +606,18 @@ async function fetchTranscripts() {
       outputLanguage &&
       inputLanguage.toLowerCase() !== outputLanguage.toLowerCase();
 
-    const parsedOutput = outputSrtValue
-      ? assignIndexes(parseSrt(outputSrtValue))
-      : [];
+    const parsedOutput = outputSrtValue ? assignIndexes(parseSrt(outputSrtValue)) : [];
     const parsedInput = inputSrtValue ? assignIndexes(parseSrt(inputSrtValue)) : [];
+    const outputSrtForEditing = editedSrtValue || outputSrtValue;
+    const parsedOutputForEditing = outputSrtForEditing
+      ? assignIndexes(parseSrt(outputSrtForEditing))
+      : [];
 
     if (!parsedOutput.length && !parsedInput.length) {
       error.value = 'Transcript not available for this video.';
       baselineEntries.value = [];
       displayEntries.value = [];
       editableEntries.value = [];
-      transcriptDraftStorageKey.value = '';
       return;
     }
 
@@ -675,25 +628,27 @@ async function fetchTranscripts() {
     const baseEntries =
       baseVariant === 'input'
         ? parsedInput
+        : parsedOutputForEditing.length
+          ? parsedOutputForEditing
+          : parsedInput;
+    const overlayEntries = baseVariant === 'input' ? parsedOutputForEditing : parsedInput;
+    const baselineBaseEntries =
+      baseVariant === 'input'
+        ? parsedInput
         : parsedOutput.length
           ? parsedOutput
           : parsedInput;
-    const overlayEntries = baseVariant === 'input' ? parsedOutput : parsedInput;
+    const baselineOverlayEntries = baseVariant === 'input' ? parsedOutput : parsedInput;
     const editable = isActuallyTranslated
       ? buildEditableEntries(baseEntries, overlayEntries, baseVariant)
       : assignIndexes(baseEntries);
+    const baseline = isActuallyTranslated
+      ? buildEditableEntries(baselineBaseEntries, baselineOverlayEntries, baseVariant)
+      : assignIndexes(baselineBaseEntries);
 
-    baselineEntries.value = cloneEntries(editable);
+    baselineEntries.value = cloneEntries(baseline);
     editableEntries.value = cloneEntries(editable);
-    transcriptDraftStorageKey.value = buildTranscriptDraftStorageKey(
-      authState.userEmail,
-      decodedFileName.value
-    );
-
-    const draft = loadTranscriptDraft();
-    if (draft?.entries?.length && draft.baselineHash === computeDraftBaselineHash(baselineEntries.value)) {
-      editableEntries.value = assignIndexes(normalizeDraftEntries(draft.entries));
-    }
+    lastUploadedSrt = editedSrtValue || '';
 
     clearDragState();
   } catch (err) {
@@ -869,7 +824,6 @@ function cancelEntryEdit() {
 function resetTranscripts() {
   try {
     editableEntries.value = cloneEntries(baselineEntries.value);
-    clearTranscriptDraft();
     clearDragState();
     clipStatus.value = '';
     cancelEntryEdit();
@@ -947,8 +901,7 @@ watch(
 watch(
   () => editableEntries.value,
   () => {
-    if (isSyncingTranscriptState.value) return;
-    saveTranscriptDraft();
+    scheduleEditedTranscriptUpload();
   },
   { deep: true }
 );
@@ -960,6 +913,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
   clearDragState();
   stopSegmentPlayback();
+  if (uploadTimer) {
+    clearTimeout(uploadTimer);
+  }
 });
 </script>
 
