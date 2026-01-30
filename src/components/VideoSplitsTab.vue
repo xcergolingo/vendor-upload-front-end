@@ -16,84 +16,152 @@
     </p>
     <p v-if="loading" class="info">Loading video splits...</p>
     <p v-else-if="error" class="error">{{ error }}</p>
-    <ul v-else class="split-list">
-      <li v-for="split in splits" :key="getSplitId(split)" class="split-card">
-        <div class="sentence">{{ split.sent }}</div>
-        <div v-if="shouldShowTranslation(split)" class="sentence translation">
-          {{ translationText(split) }}
+    <div v-else class="split-content">
+      <div class="folder-panel">
+        <div class="folder-header">
+          <h3>Folders</h3>
+          <p class="folder-subtitle">
+            Create folders to organize clips. Videos with a folder field appear in the matching folder too.
+          </p>
         </div>
-        <video controls playsinline webkit-playsinline preload="metadata" :src="split.video_url"></video>
-        <p v-if="split.video_url" class="video-url">
-          <a :href="split.video_url" target="_blank" rel="noopener noreferrer">
-            {{ split.video_url }}
-          </a>
-        </p>
-        <div class="actions">
-          <template v-if="!split.if_indexed && split.showPriorityInput">
-            <span class="priority-label">Priority score</span>
-            <div class="priority-stepper" :aria-disabled="split.isIndexing">
-              <button
-                type="button"
-                class="priority-stepper-button"
-                :disabled="split.isIndexing || split.priority_score <= 1"
-                aria-label="Decrease priority score"
-                @click="adjustPriorityScore(split, -1)"
+        <div class="folder-form">
+          <label>
+            Folder name
+            <input v-model.trim="newFolderName" type="text" placeholder="New folder name" />
+          </label>
+          <label>
+            Parent folder
+            <select v-model="newFolderParent">
+              <option value="">Root</option>
+              <option
+                v-for="option in folderOptions"
+                :key="option.path"
+                :value="option.path"
               >
-                -
-              </button>
-              <span class="priority-value" aria-label="Priority score value">{{ split.priority_score }}</span>
-              <button
-                type="button"
-                class="priority-stepper-button"
-                :disabled="split.isIndexing || split.priority_score >= 10"
-                aria-label="Increase priority score"
-                @click="adjustPriorityScore(split, 1)"
-              >
-                +
-              </button>
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <button class="secondary" type="button" :disabled="folderSaving" @click="addFolder">
+            {{ folderSaving ? 'Saving...' : 'Add folder' }}
+          </button>
+        </div>
+        <p v-if="folderError" class="error">{{ folderError }}</p>
+        <p v-if="folderLoading" class="info">Loading folders...</p>
+        <p v-if="!folderNodesFlat.length" class="info">No folders yet.</p>
+        <ul v-else class="folder-tree">
+          <li
+            v-for="folder in folderNodesFlat"
+            :key="folder.path"
+            class="folder-node"
+            :style="{ paddingLeft: `${folder.depth * 18}px` }"
+          >
+            <div class="folder-row">
+              <span class="folder-name">{{ folder.name }}</span>
+              <span class="folder-meta">
+                {{ folder.splits.length }} video{{ folder.splits.length === 1 ? '' : 's' }}
+              </span>
             </div>
-            <button class="primary" :disabled="split.isIndexing" @click="submitIndexSplit(split)">
-              {{ split.isIndexing ? 'Indexing...' : 'Submit' }}
+            <ul v-if="folder.splits.length" class="folder-videos">
+              <li
+                v-for="split in folder.splits"
+                :key="`folder-${folder.path}-${getSplitId(split)}`"
+                class="folder-video-card"
+              >
+                <div class="sentence">{{ split.sent }}</div>
+                <div v-if="shouldShowTranslation(split)" class="sentence translation">
+                  {{ translationText(split) }}
+                </div>
+                <video controls playsinline webkit-playsinline preload="metadata" :src="split.video_url"></video>
+                <p v-if="split.video_url" class="video-url">
+                  <a :href="split.video_url" target="_blank" rel="noopener noreferrer">
+                    {{ split.video_url }}
+                  </a>
+                </p>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </div>
+      <ul class="split-list">
+        <li v-for="split in splits" :key="getSplitId(split)" class="split-card">
+          <div class="sentence">{{ split.sent }}</div>
+          <div v-if="shouldShowTranslation(split)" class="sentence translation">
+            {{ translationText(split) }}
+          </div>
+          <video controls playsinline webkit-playsinline preload="metadata" :src="split.video_url"></video>
+          <p v-if="split.video_url" class="video-url">
+            <a :href="split.video_url" target="_blank" rel="noopener noreferrer">
+              {{ split.video_url }}
+            </a>
+          </p>
+          <div class="actions">
+            <template v-if="!split.if_indexed && split.showPriorityInput">
+              <span class="priority-label">Priority score</span>
+              <div class="priority-stepper" :aria-disabled="split.isIndexing">
+                <button
+                  type="button"
+                  class="priority-stepper-button"
+                  :disabled="split.isIndexing || split.priority_score <= 1"
+                  aria-label="Decrease priority score"
+                  @click="adjustPriorityScore(split, -1)"
+                >
+                  -
+                </button>
+                <span class="priority-value" aria-label="Priority score value">{{ split.priority_score }}</span>
+                <button
+                  type="button"
+                  class="priority-stepper-button"
+                  :disabled="split.isIndexing || split.priority_score >= 10"
+                  aria-label="Increase priority score"
+                  @click="adjustPriorityScore(split, 1)"
+                >
+                  +
+                </button>
+              </div>
+              <button class="primary" :disabled="split.isIndexing" @click="submitIndexSplit(split)">
+                {{ split.isIndexing ? 'Indexing...' : 'Submit' }}
+              </button>
+              <button class="secondary" :disabled="split.isIndexing" @click="cancelIndexSplit(split)">
+                Cancel
+              </button>
+            </template>
+            <button
+              v-else
+              class="primary"
+              :disabled="split.if_indexed || split.isIndexing"
+              @click="startIndexSplit(split)"
+            >
+              <span v-if="split.if_indexed">Indexed</span>
+              <span v-else-if="split.isIndexing">Indexing...</span>
+              <span v-else>Add to search</span>
             </button>
-            <button class="secondary" :disabled="split.isIndexing" @click="cancelIndexSplit(split)">
-              Cancel
+            <button
+              class="secondary"
+              :disabled="isInDownload(split)"
+              @click="addToDownload(split)"
+            >
+              {{ isInDownload(split) ? 'Added' : 'Add to download' }}
             </button>
-          </template>
-          <button
-            v-else
-            class="primary"
-            :disabled="split.if_indexed || split.isIndexing"
-            @click="startIndexSplit(split)"
-          >
-            <span v-if="split.if_indexed">Indexed</span>
-            <span v-else-if="split.isIndexing">Indexing...</span>
-            <span v-else>Add to search</span>
-          </button>
-          <button
-            class="secondary"
-            :disabled="isInDownload(split)"
-            @click="addToDownload(split)"
-          >
-            {{ isInDownload(split) ? 'Added' : 'Add to download' }}
-          </button>
-          <button
-            class="danger small"
-            type="button"
-            :disabled="
-              split.isIndexing ||
-              split.isDeleting ||
-              split.timestamp === undefined ||
-              split.timestamp === null ||
-              split.timestamp === ''
-            "
-            @click="deleteSplit(split)"
-          >
-            {{ split.isDeleting ? 'Deleting...' : 'Delete' }}
-          </button>
-        </div>
-      </li>
-      <li v-if="!splits.length" class="info">No splits found.</li>
-    </ul>
+            <button
+              class="danger small"
+              type="button"
+              :disabled="
+                split.isIndexing ||
+                split.isDeleting ||
+                split.timestamp === undefined ||
+                split.timestamp === null ||
+                split.timestamp === ''
+              "
+              @click="deleteSplit(split)"
+            >
+              {{ split.isDeleting ? 'Deleting...' : 'Delete' }}
+            </button>
+          </div>
+        </li>
+        <li v-if="!splits.length" class="info">No splits found.</li>
+      </ul>
+    </div>
 
     <div v-if="!loading && !error && splits.length" class="pagination">
       <button
@@ -135,7 +203,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
   userEmail: {
@@ -158,6 +226,12 @@ const downloadMovieTitle = ref('');
 const downloadChapterNo = ref(1);
 const downloadCustomTags = ref('');
 const nextPageToken = ref(null);
+const manualFolderPaths = ref([]);
+const newFolderName = ref('');
+const newFolderParent = ref('');
+const folderError = ref('');
+const folderLoading = ref(false);
+const folderSaving = ref(false);
 
 function normalizeLanguageCode(value) {
   return String(value || '').trim().toLowerCase();
@@ -183,9 +257,233 @@ function shouldShowTranslation(split) {
   return !isSameLanguage(split);
 }
 
+function normalizeFolderPath(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/\/+/g, '/')
+    .replace(/^\/|\/$/g, '');
+}
+
+function buildFolderNodes(paths, splitList) {
+  const nodes = new Map();
+  const ensureNode = path => {
+    if (nodes.has(path)) return nodes.get(path);
+    const segments = path.split('/');
+    const name = segments[segments.length - 1] || '';
+    const parentPath = segments.length > 1 ? segments.slice(0, -1).join('/') : '';
+    const node = {
+      path,
+      name,
+      parentPath,
+      children: [],
+      splits: []
+    };
+    nodes.set(path, node);
+    return node;
+  };
+
+  paths.forEach(path => {
+    const normalized = normalizeFolderPath(path);
+    if (!normalized) return;
+    const segments = normalized.split('/');
+    let current = '';
+    segments.forEach(segment => {
+      current = current ? `${current}/${segment}` : segment;
+      ensureNode(current);
+    });
+  });
+
+  nodes.forEach(node => {
+    if (node.parentPath && nodes.has(node.parentPath)) {
+      nodes.get(node.parentPath).children.push(node);
+    }
+  });
+
+  nodes.forEach(node => {
+    node.children.sort((a, b) => a.name.localeCompare(b.name));
+  });
+
+  splitList.forEach(split => {
+    const folderPath = normalizeFolderPath(split?.folder);
+    if (!folderPath) return;
+    const node = nodes.get(folderPath);
+    if (node) node.splits.push(split);
+  });
+
+  nodes.forEach(node => {
+    node.splits.sort((a, b) => {
+      const aValue = Number(a?.timestamp);
+      const bValue = Number(b?.timestamp);
+      const aFinite = Number.isFinite(aValue);
+      const bFinite = Number.isFinite(bValue);
+      if (aFinite && bFinite) return aValue - bValue;
+      if (aFinite) return -1;
+      if (bFinite) return 1;
+      return 0;
+    });
+  });
+
+  const roots = Array.from(nodes.values()).filter(node => !node.parentPath);
+  roots.sort((a, b) => a.name.localeCompare(b.name));
+  return roots;
+}
+
+function flattenFolderNodes(nodes, depth = 0) {
+  const flattened = [];
+  nodes.forEach(node => {
+    flattened.push({
+      ...node,
+      depth
+    });
+    if (node.children.length) {
+      flattened.push(...flattenFolderNodes(node.children, depth + 1));
+    }
+  });
+  return flattened;
+}
+
+const folderPathsFromSplits = computed(() => {
+  const paths = new Set();
+  splits.value.forEach(split => {
+    const normalized = normalizeFolderPath(split?.folder);
+    if (!normalized) return;
+    const segments = normalized.split('/');
+    let current = '';
+    segments.forEach(segment => {
+      current = current ? `${current}/${segment}` : segment;
+      paths.add(current);
+    });
+  });
+  return paths;
+});
+
+const allFolderPaths = computed(() => {
+  const paths = new Set();
+  manualFolderPaths.value.forEach(path => {
+    const normalized = normalizeFolderPath(path);
+    if (normalized) paths.add(normalized);
+  });
+  folderPathsFromSplits.value.forEach(path => paths.add(path));
+  return Array.from(paths);
+});
+
+const folderNodesFlat = computed(() => {
+  if (!allFolderPaths.value.length) return [];
+  const nodes = buildFolderNodes(allFolderPaths.value, splits.value);
+  return flattenFolderNodes(nodes);
+});
+
+const folderOptions = computed(() =>
+  folderNodesFlat.value.map(node => ({
+    path: node.path,
+    label: `${'-- '.repeat(node.depth)}${node.name}`
+  }))
+);
+
+function addFolder() {
+  const name = String(newFolderName.value || '').trim();
+  const parent = normalizeFolderPath(newFolderParent.value);
+  if (!name) {
+    folderError.value = 'Please enter a folder name.';
+    return;
+  }
+  if (name.includes('/')) {
+    folderError.value = 'Use a single folder name without "/".';
+    return;
+  }
+  const path = parent ? `${parent}/${name}` : name;
+  if (allFolderPaths.value.includes(path)) {
+    folderError.value = 'That folder already exists.';
+    return;
+  }
+  manualFolderPaths.value = [...manualFolderPaths.value, path];
+  newFolderName.value = '';
+  folderError.value = '';
+  saveFolderTree();
+}
+
 function resetDownloadState() {
   downloadSelections.value = [];
   downloadIds.value = new Set();
+}
+
+function buildFolderPayload(paths) {
+  const folders = [];
+  const uniquePaths = Array.from(
+    new Set(
+      paths
+        .map(path => normalizeFolderPath(path))
+        .filter(Boolean)
+    )
+  );
+  uniquePaths.forEach(path => {
+    const segments = path.split('/');
+    const name = segments[segments.length - 1];
+    const parentPath = segments.length > 1 ? segments.slice(0, -1).join('/') : null;
+    folders.push({
+      id: path,
+      name,
+      parent_id: parentPath
+    });
+  });
+  return folders;
+}
+
+async function saveFolderTree() {
+  if (!props.userEmail || folderSaving.value) return;
+  folderSaving.value = true;
+  folderError.value = '';
+  try {
+    const response = await fetch(
+      'https://ln686uub5b.execute-api.us-east-1.amazonaws.com/prod/vendor/folder_update',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: props.userEmail,
+          folders: buildFolderPayload(manualFolderPaths.value)
+        })
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Request failed');
+    }
+  } catch (err) {
+    console.error(err);
+    folderError.value = 'Unable to save folders. Please try again.';
+  } finally {
+    folderSaving.value = false;
+  }
+}
+
+async function fetchFolderTree() {
+  if (!props.userEmail || folderLoading.value) return;
+  folderLoading.value = true;
+  folderError.value = '';
+  try {
+    const response = await fetch(
+      'https://ln686uub5b.execute-api.us-east-1.amazonaws.com/prod/vendor/folder_fetch',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: props.userEmail })
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Request failed');
+    }
+    const payload = await response.json();
+    const folderPaths = Array.isArray(payload?.folders)
+      ? payload.folders.map(folder => folder?.path).filter(Boolean)
+      : [];
+    manualFolderPaths.value = folderPaths;
+  } catch (err) {
+    console.error(err);
+    folderError.value = 'Unable to load folders. Please try again.';
+  } finally {
+    folderLoading.value = false;
+  }
 }
 
 function getSplitId(split) {
@@ -500,6 +798,7 @@ watch(
   () => props.userEmail,
   email => {
     if (email) {
+      fetchFolderTree();
       fetchSplits();
     }
   },
@@ -561,6 +860,115 @@ watch(
   color: #858796;
   font-size: 0.9rem;
   margin-bottom: 4px;
+}
+
+.split-content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.folder-panel {
+  border: 1px solid #e3e6f0;
+  border-radius: 10px;
+  padding: 16px;
+  background: #f8f9fc;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.folder-header h3 {
+  margin: 0;
+}
+
+.folder-subtitle {
+  margin: 4px 0 0;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.folder-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.folder-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.folder-form input,
+.folder-form select {
+  border: 1px solid #d1d3e2;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #111827;
+  background: white;
+}
+
+.folder-form button {
+  height: 38px;
+}
+
+.folder-tree {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.folder-node {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.folder-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: white;
+  border-radius: 8px;
+  padding: 10px 12px;
+  border: 1px solid #e3e6f0;
+}
+
+.folder-name {
+  font-weight: 700;
+  color: #4e73df;
+}
+
+.folder-meta {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.folder-videos {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.folder-video-card {
+  border: 1px solid #e3e6f0;
+  border-radius: 8px;
+  padding: 12px;
+  background: white;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .pagination {
@@ -765,5 +1173,15 @@ video {
   font-weight: 700;
   color: #4e73df;
   background: white;
+}
+
+@media (max-width: 720px) {
+  .folder-form {
+    grid-template-columns: 1fr;
+  }
+
+  .folder-form button {
+    width: 100%;
+  }
 }
 </style>
