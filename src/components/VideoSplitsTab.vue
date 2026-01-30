@@ -57,12 +57,22 @@
             :style="{ paddingLeft: `${folder.depth * 18}px` }"
           >
             <div class="folder-row">
-              <span class="folder-name">{{ folder.name }}</span>
+              <button
+                type="button"
+                class="folder-toggle"
+                :aria-expanded="isFolderExpanded(folder.path)"
+                @click="toggleFolder(folder.path)"
+              >
+                <span class="folder-name">{{ folder.name }}</span>
+                <span class="folder-toggle-label">
+                  {{ isFolderExpanded(folder.path) ? 'Hide' : 'Show' }}
+                </span>
+              </button>
               <span class="folder-meta">
                 {{ folder.splits.length }} video{{ folder.splits.length === 1 ? '' : 's' }}
               </span>
             </div>
-            <ul v-if="folder.splits.length" class="folder-videos">
+            <ul v-if="folder.splits.length && isFolderExpanded(folder.path)" class="folder-videos">
               <li
                 v-for="split in folder.splits"
                 :key="`folder-${folder.path}-${getSplitId(split)}`"
@@ -232,6 +242,7 @@ const newFolderParent = ref('');
 const folderError = ref('');
 const folderLoading = ref(false);
 const folderSaving = ref(false);
+const expandedFolders = ref(new Set());
 
 function normalizeLanguageCode(value) {
   return String(value || '').trim().toLowerCase();
@@ -401,6 +412,20 @@ function addFolder() {
   newFolderName.value = '';
   folderError.value = '';
   saveFolderTree();
+}
+
+function isFolderExpanded(path) {
+  return expandedFolders.value.has(path);
+}
+
+function toggleFolder(path) {
+  const next = new Set(expandedFolders.value);
+  if (next.has(path)) {
+    next.delete(path);
+  } else {
+    next.add(path);
+  }
+  expandedFolders.value = next;
 }
 
 function resetDownloadState() {
@@ -941,6 +966,23 @@ watch(
   border-radius: 8px;
   padding: 10px 12px;
   border: 1px solid #e3e6f0;
+}
+
+.folder-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.folder-toggle-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #6b7280;
 }
 
 .folder-name {

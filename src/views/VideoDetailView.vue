@@ -129,6 +129,21 @@
           </div>
         </div>
         <div class="clip-actions">
+          <div class="clip-folder">
+            <label for="clip-folder-select">Clip folder</label>
+            <select
+              id="clip-folder-select"
+              v-model="selectedFolderPath"
+              :disabled="folderLoading || !folderOptions.length"
+            >
+              <option value="">None</option>
+              <option v-for="option in folderOptions" :key="option.path" :value="option.path">
+                {{ option.label }}
+              </option>
+            </select>
+            <span v-if="folderLoading" class="clip-folder-status">Loading folders...</span>
+            <span v-else-if="folderError" class="clip-folder-status error">{{ folderError }}</span>
+          </div>
           <button @click="generateClips" :disabled="clipLoading || !editableEntries.length">
             {{ clipLoading ? 'Generating...' : 'Generate clips' }}
           </button>
@@ -178,6 +193,10 @@ const draftOutputText = ref('');
 const draftSingleText = ref('');
 const clipLoading = ref(false);
 const clipStatus = ref('');
+const manualFolderPaths = ref([]);
+const selectedFolderPath = ref('');
+const folderLoading = ref(false);
+const folderError = ref('');
 const videoRef = ref(null);
 const showTabLabel = 'Show transcripts';
 let videoSegmentEndSeconds = null;
@@ -217,6 +236,84 @@ const outputSrt = computed(() =>
       text: entry.outputText || entry.text || ''
     }))
   )
+);
+
+function normalizeFolderPath(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/\/+/g, '/')
+    .replace(/^\/|\/$/g, '');
+}
+
+function buildFolderNodes(paths) {
+  const nodes = new Map();
+  const ensureNode = path => {
+    if (nodes.has(path)) return nodes.get(path);
+    const segments = path.split('/');
+    const name = segments[segments.length - 1] || '';
+    const parentPath = segments.length > 1 ? segments.slice(0, -1).join('/') : '';
+    const node = {
+      path,
+      name,
+      parentPath,
+      children: []
+    };
+    nodes.set(path, node);
+    return node;
+  };
+
+  paths.forEach(path => {
+    const normalized = normalizeFolderPath(path);
+    if (!normalized) return;
+    const segments = normalized.split('/');
+    let current = '';
+    segments.forEach(segment => {
+      current = current ? `${current}/${segment}` : segment;
+      ensureNode(current);
+    });
+  });
+
+  nodes.forEach(node => {
+    if (node.parentPath && nodes.has(node.parentPath)) {
+      nodes.get(node.parentPath).children.push(node);
+    }
+  });
+
+  nodes.forEach(node => {
+    node.children.sort((a, b) => a.name.localeCompare(b.name));
+  });
+
+  const roots = Array.from(nodes.values()).filter(node => !node.parentPath);
+  roots.sort((a, b) => a.name.localeCompare(b.name));
+  return roots;
+}
+
+function flattenFolderNodes(nodes, depth = 0) {
+  const flattened = [];
+  nodes.forEach(node => {
+    flattened.push({
+      ...node,
+      depth
+    });
+    if (node.children.length) {
+      flattened.push(...flattenFolderNodes(node.children, depth + 1));
+    }
+  });
+  return flattened;
+}
+
+const folderNodesFlat = computed(() => {
+  if (!manualFolderPaths.value.length) return [];
+  const nodes = buildFolderNodes(manualFolderPaths.value);
+  return flattenFolderNodes(nodes);
+});
+
+const folderOptions = computed(() =>
+  folderNodesFlat.value.map(node => ({
+    path: node.path,
+    label: `${'-- '.repeat(node.depth)}${node.name}`
+  }))
 );
 const editedLang = computed(() => {
   if (editBaseVariant.value === 'input') return inputLang.value || outputLang.value || 'en';
@@ -660,6 +757,35 @@ async function fetchTranscripts() {
   }
 }
 
+async function fetchFolderTree() {
+  if (!authState.userEmail || folderLoading.value) return;
+  folderLoading.value = true;
+  folderError.value = '';
+  try {
+    const response = await fetch(
+      'https://ln686uub5b.execute-api.us-east-1.amazonaws.com/prod/vendor/folder_fetch',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: authState.userEmail })
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Request failed');
+    }
+    const payload = await response.json();
+    const folderPaths = Array.isArray(payload?.folders)
+      ? payload.folders.map(folder => folder?.path).filter(Boolean)
+      : [];
+    manualFolderPaths.value = folderPaths;
+  } catch (err) {
+    console.error(err);
+    folderError.value = 'Unable to load folders. Please try again.';
+  } finally {
+    folderLoading.value = false;
+  }
+}
+
 function goBack() {
   router.back();
 }
@@ -849,6 +975,7 @@ async function generateClips() {
   clipLoading.value = true;
   clipStatus.value = '';
   try {
+    const folderPath = normalizeFolderPath(selectedFolderPath.value);
     const cutPayload = {
       bucket: 'golingo-vendor-video-upload',
       key: decodedFileName.value,
@@ -859,6 +986,9 @@ async function generateClips() {
       lang_translation: cutLangTranslation.value,
       user_name: authState.userEmail
     };
+    if (folderPath) {
+      cutPayload.folder = folderPath;
+    }
     console.log('[vendor/cut] payload summary', {
       bucket: cutPayload.bucket,
       key: cutPayload.key,
@@ -893,6 +1023,16 @@ watch(
     const [prevFile, prevEmail] = prevValues;
     if (file && email && (file !== prevFile || email !== prevEmail)) {
       fetchTranscripts();
+    }
+  },
+  { immediate: true }
+);
+
+watch(
+  () => authState.userEmail,
+  email => {
+    if (email) {
+      fetchFolderTree();
     }
   },
   { immediate: true }
@@ -1240,6 +1380,32 @@ h2 {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.clip-folder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.clip-folder label {
+  font-weight: 600;
+  color: #4e73df;
+}
+
+.clip-folder select {
+  border: 1px solid #d1d5e6;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: inherit;
+  color: #111827;
+  background: white;
+}
+
+.clip-folder-status {
+  font-size: 0.85rem;
+  color: #6b7280;
 }
 
 .clip-actions button {
