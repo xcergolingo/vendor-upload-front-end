@@ -1,22 +1,17 @@
 <template>
   <div class="detail">
-    <button class="back" @click="goBack">← Back</button>
-    <header>
-      <div>
-        <h2>{{ displayName }}</h2>
-        <p class="subtitle">{{ decodedFileName }}</p>
-      </div>
-      <div class="actions">
-        <a
-          v-if="videoUrl"
-          :href="videoUrl"
-          target="_blank"
-          rel="noreferrer"
-          download
-        >
-          Download video
-        </a>
-      </div>
+    <header class="compact-header">
+      <button class="back" @click="goBack">← Back</button>
+      <a
+        v-if="videoUrl"
+        class="download-btn"
+        :href="videoUrl"
+        target="_blank"
+        rel="noreferrer"
+        download
+      >
+        Download video
+      </a>
     </header>
 
     <section v-if="videoUrl" class="player">
@@ -189,6 +184,12 @@
 
               <!-- Editor panel (when editing full entry) -->
               <div v-if="editingIndex === index" class="entry-editor">
+                <!-- Text preview (shows translation) -->
+                <div class="edit-text-preview">
+                  <p v-if="isTranslated" class="text-line input">{{ entry.inputText || '' }}</p>
+                  <p v-if="isTranslated" class="text-line output">{{ entry.outputText || '' }}</p>
+                  <p v-if="!isTranslated" class="text-line single">{{ entry.text }}</p>
+                </div>
                 <div class="editor-time-row">
                   <button type="button" class="editor-time-btn" @click.stop="playFromStartTime(draftStart, index)">Start</button>
                   <input v-model="draftStart" class="editor-input time-input-edit" type="text" inputmode="numeric" />
@@ -1430,13 +1431,29 @@ onBeforeUnmount(() => {
   box-shadow: 0 10px 25px rgb(0 0 0 / 5%);
 }
 
+.compact-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
 .back {
   border: none;
   background: transparent;
   color: #4e73df;
   cursor: pointer;
   font-weight: 600;
-  margin-bottom: 16px;
+}
+
+.download-btn {
+  padding: 8px 16px;
+  background: #1cc88a;
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.9rem;
 }
 
 header {
@@ -1697,6 +1714,18 @@ h2 {
   align-items: center;
 }
 
+.edit-text-preview {
+  margin-bottom: 12px;
+  padding: 10px;
+  background: #f8f9fc;
+  border-radius: 6px;
+  border-left: 3px solid #4e73df;
+}
+
+.edit-text-preview .text-line {
+  margin: 4px 0;
+}
+
 .editor-time-row {
   display: flex;
   align-items: center;
@@ -1905,8 +1934,8 @@ h2 {
 .time-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 3px;
+  flex-wrap: nowrap;
 }
 
 @media (max-width: 480px) {
