@@ -21,6 +21,7 @@
           <label>Speed:</label>
           <select v-model="playbackSpeed" @change="updatePlaybackSpeed">
             <option value="0.5">0.5x</option>
+            <option value="0.6">0.6x</option>
             <option value="0.75">0.75x</option>
             <option value="1" selected>1x</option>
             <option value="1.25">1.25x</option>
@@ -35,10 +36,11 @@
       <div v-if="showTips" class="tips-panel">
         <p><strong>Tips:</strong></p>
         <ul>
-          <li>Use +/- buttons to adjust timestamps by 100ms</li>
-          <li>Click → to play from that timestamp</li>
-          <li>Drag entries to merge them</li>
-          <li>Edit to modify text and times</li>
+          <li><strong>Hold +/-</strong> to continuously adjust timestamps</li>
+          <li><strong>Tap timestamp</strong> to edit directly (numeric keyboard)</li>
+          <li><strong>Double-tap timestamp</strong> to add 0.5 seconds</li>
+          <li><strong>Long-press text</strong> to select and copy</li>
+          <li><strong>Tap text</strong> to play clip</li>
         </ul>
       </div>
     </section>
@@ -100,21 +102,24 @@
                 <button 
                   type="button" 
                   class="time-adjust" 
-                  @click.stop="adjustTime(index, 'start', -100)"
-                  @dblclick.stop.prevent="adjustTime(index, 'start', -100)"
+                  @mousedown.stop="startHoldAdjust(index, 'start', -100)"
+                  @mouseup.stop="stopHoldAdjust"
+                  @mouseleave.stop="stopHoldAdjust"
+                  @touchstart.stop.prevent="startHoldAdjust(index, 'start', -100)"
+                  @touchend.stop="stopHoldAdjust"
                 >−</button>
                 <span 
                   class="time-value" 
                   :class="{ 'editing': editingTimeIndex === index && editingTimeField === 'start' }"
-                  @click.stop="playFromStartTime(entry.start, index)"
-                  @dblclick.stop.prevent="startTimeEdit(index, 'start', entry.start)"
+                  @click.stop="startTimeEdit(index, 'start', entry.start)"
+                  @dblclick.stop.prevent="quickAdjustTime(index, 'start', 500)"
                 >
                   <input 
                     v-if="editingTimeIndex === index && editingTimeField === 'start'"
                     v-model="editingTimeValue"
                     type="text"
-                    inputmode="numeric"
-                    pattern="[0-9:,]*"
+                    inputmode="decimal"
+                    pattern="[0-9:,\.]*"
                     class="time-input"
                     @blur="saveTimeEdit(index, 'start')"
                     @keyup.enter="saveTimeEdit(index, 'start')"
@@ -125,8 +130,11 @@
                 <button 
                   type="button" 
                   class="time-adjust" 
-                  @click.stop="adjustTime(index, 'start', 100)"
-                  @dblclick.stop.prevent="adjustTime(index, 'start', 100)"
+                  @mousedown.stop="startHoldAdjust(index, 'start', 100)"
+                  @mouseup.stop="stopHoldAdjust"
+                  @mouseleave.stop="stopHoldAdjust"
+                  @touchstart.stop.prevent="startHoldAdjust(index, 'start', 100)"
+                  @touchend.stop="stopHoldAdjust"
                 >+</button>
                 <button 
                   type="button" 
@@ -144,21 +152,24 @@
                 <button 
                   type="button" 
                   class="time-adjust" 
-                  @click.stop="adjustTime(index, 'end', -100)"
-                  @dblclick.stop.prevent="adjustTime(index, 'end', -100)"
+                  @mousedown.stop="startHoldAdjust(index, 'end', -100)"
+                  @mouseup.stop="stopHoldAdjust"
+                  @mouseleave.stop="stopHoldAdjust"
+                  @touchstart.stop.prevent="startHoldAdjust(index, 'end', -100)"
+                  @touchend.stop="stopHoldAdjust"
                 >−</button>
                 <span 
                   class="time-value"
                   :class="{ 'editing': editingTimeIndex === index && editingTimeField === 'end' }"
-                  @click.stop="playFromEndTimeBefore(entry.end, 2500)"
-                  @dblclick.stop.prevent="startTimeEdit(index, 'end', entry.end)"
+                  @click.stop="startTimeEdit(index, 'end', entry.end)"
+                  @dblclick.stop.prevent="quickAdjustTime(index, 'end', 500)"
                 >
                   <input 
                     v-if="editingTimeIndex === index && editingTimeField === 'end'"
                     v-model="editingTimeValue"
                     type="text"
-                    inputmode="numeric"
-                    pattern="[0-9:,]*"
+                    inputmode="decimal"
+                    pattern="[0-9:,\.]*"
                     class="time-input"
                     @blur="saveTimeEdit(index, 'end')"
                     @keyup.enter="saveTimeEdit(index, 'end')"
@@ -168,8 +179,11 @@
                 <button 
                   type="button" 
                   class="time-adjust" 
-                  @click.stop="adjustTime(index, 'end', 100)"
-                  @dblclick.stop.prevent="adjustTime(index, 'end', 100)"
+                  @mousedown.stop="startHoldAdjust(index, 'end', 100)"
+                  @mouseup.stop="stopHoldAdjust"
+                  @mouseleave.stop="stopHoldAdjust"
+                  @touchstart.stop.prevent="startHoldAdjust(index, 'end', 100)"
+                  @touchend.stop="stopHoldAdjust"
                 >+</button>
                 <button 
                   type="button" 
@@ -213,14 +227,14 @@
                 </div>
               </div>
 
-              <!-- Text content - tap to play, double-tap to play from middle -->
+              <!-- Text content - tap to play (if no text selected), double-tap to play from middle -->
               <div v-else class="entry-content" 
-                @click.stop="playEntryFull(entry)"
+                @click.stop="handleEntryContentClick($event, entry)"
                 @dblclick.stop.prevent="playEntryFromMiddle(entry)"
               >
-                <p v-if="isTranslated" class="text-line input">{{ entry.inputText || '' }}</p>
-                <p v-if="isTranslated" class="text-line output">{{ entry.outputText || '' }}</p>
-                <p v-if="!isTranslated" class="text-line single">{{ entry.text }}</p>
+                <p v-if="isTranslated" class="text-line input selectable-text">{{ entry.inputText || '' }}</p>
+                <p v-if="isTranslated" class="text-line output selectable-text">{{ entry.outputText || '' }}</p>
+                <p v-if="!isTranslated" class="text-line single selectable-text">{{ entry.text }}</p>
               </div>
             </div>
           </div>
@@ -1030,6 +1044,38 @@ function adjustTime(index, field, deltaMs) {
   entry[field] = msToTimeStr(newMs);
 }
 
+// Hold-to-repeat adjustment
+let holdAdjustInterval = null;
+let holdAdjustTimeout = null;
+
+function startHoldAdjust(index, field, deltaMs) {
+  // Immediately adjust once
+  adjustTime(index, field, deltaMs);
+  
+  // After a short delay, start repeating
+  holdAdjustTimeout = setTimeout(() => {
+    holdAdjustInterval = setInterval(() => {
+      adjustTime(index, field, deltaMs);
+    }, 80); // Repeat every 80ms while held
+  }, 300); // 300ms delay before repeat starts
+}
+
+function stopHoldAdjust() {
+  if (holdAdjustTimeout) {
+    clearTimeout(holdAdjustTimeout);
+    holdAdjustTimeout = null;
+  }
+  if (holdAdjustInterval) {
+    clearInterval(holdAdjustInterval);
+    holdAdjustInterval = null;
+  }
+}
+
+// Quick adjust by 0.5s on double-tap
+function quickAdjustTime(index, field, deltaMs) {
+  adjustTime(index, field, deltaMs);
+}
+
 function playFromTime(timeStr) {
   if (!videoRef.value) return;
   const ms = parseTimeToMs(timeStr);
@@ -1082,6 +1128,17 @@ function playFromEndTimeBefore(endTimeStr, beforeMs) {
     }
   };
   videoRef.value.addEventListener('timeupdate', checkStop);
+}
+
+// Handle click on entry content - only play if no text is selected
+function handleEntryContentClick(event, entry) {
+  // Check if user has selected text
+  const selection = window.getSelection();
+  if (selection && selection.toString().length > 0) {
+    // Text is selected, don't play
+    return;
+  }
+  playEntryFull(entry);
 }
 
 // Play from start to end (stop at end timestamp)
@@ -2386,6 +2443,12 @@ h2 {
   transition: background 0.15s;
   user-select: text;
   -webkit-user-select: text;
+}
+
+.selectable-text {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
 }
 
 .entry-content:hover {
