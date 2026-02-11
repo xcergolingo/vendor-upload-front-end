@@ -902,23 +902,38 @@ async function fetchTranscripts() {
     let baseEntries;
     let overlayEntries;
     
-    if (editedInputSrt && editedOutputSrt) {
+    // Safely parse edited SRTs with fallback
+    let parsedEditedInput = [];
+    let parsedEditedOutput = [];
+    
+    try {
+      if (editedInputSrt) {
+        parsedEditedInput = assignIndexes(parseSrt(editedInputSrt));
+      }
+      if (editedOutputSrt) {
+        parsedEditedOutput = assignIndexes(parseSrt(editedOutputSrt));
+      }
+    } catch (parseErr) {
+      console.warn('Error parsing edited SRT, using originals:', parseErr);
+      parsedEditedInput = [];
+      parsedEditedOutput = [];
+    }
+    
+    if (parsedEditedInput.length && parsedEditedOutput.length) {
       // New format: both SRTs saved - use them directly
-      const parsedEditedInput = assignIndexes(parseSrt(editedInputSrt));
-      const parsedEditedOutput = assignIndexes(parseSrt(editedOutputSrt));
       baseEntries = baseVariant === 'input' ? parsedEditedInput : parsedEditedOutput;
       overlayEntries = baseVariant === 'input' ? parsedEditedOutput : parsedEditedInput;
-    } else if (editedInputSrt) {
+    } else if (parsedEditedInput.length) {
       // Legacy format: only one SRT saved
       if (baseVariant === 'input') {
-        baseEntries = assignIndexes(parseSrt(editedInputSrt));
+        baseEntries = parsedEditedInput;
         overlayEntries = parsedOutput;
       } else {
-        baseEntries = assignIndexes(parseSrt(editedInputSrt));
+        baseEntries = parsedEditedInput;
         overlayEntries = parsedInput;
       }
     } else {
-      // No edits saved - use originals
+      // No edits saved or parsing failed - use originals
       baseEntries = baseVariant === 'input' ? parsedInput : parsedOutput;
       overlayEntries = baseVariant === 'input' ? parsedOutput : parsedInput;
     }
