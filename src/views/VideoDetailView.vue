@@ -141,7 +141,7 @@
                   title="Copy end time from previous clip"
                 >←</button>
                 <button type="button" class="merge-btn" @click.stop="mergeWithPrevious(index)" :disabled="index === 0">↑ Merge</button>
-                <button type="button" class="merge-btn" @click.stop="mergeWithNext(index)" :disabled="index === editableEntries.length - 1">↓ Merge</button>
+                <button type="button" class="merge-btn" @click.stop="mergeWithNext(index)" :disabled="index === editableEntries.length - 1">↓</button>
               </div>
 
               <!-- Time controls row 2: End time + Edit/Regen buttons -->
@@ -184,16 +184,18 @@
                   title="Copy start time from next clip"
                 >→</button>
                 <button type="button" class="action-btn edit-btn" @click.stop="startEntryEdit(entry, index)" :disabled="editingIndex !== null && editingIndex !== index">Edit</button>
-                <button type="button" class="action-btn regen-btn" @click.stop="regenEntry(index)" :disabled="entry.isRegenerating">{{ entry.isRegenerating ? 'Regen...' : 'Regen' }}</button>
+                <button type="button" class="action-btn regen-btn" @click.stop="regenEntry(index)" :disabled="entry.isRegenerating">{{ entry.isRegenerating ? 'Gen...' : 'Gen' }}</button>
               </div>
 
               <!-- Editor panel (when editing full entry) -->
               <div v-if="editingIndex === index" class="entry-editor">
-                <div class="editor-times">
-                  <label class="editor-label time">Start</label>
-                  <input v-model="draftStart" class="editor-input" type="text" inputmode="numeric" />
-                  <label class="editor-label time">End</label>
-                  <input v-model="draftEnd" class="editor-input" type="text" inputmode="numeric" />
+                <div class="editor-time-row">
+                  <button type="button" class="editor-time-btn" @click.stop="playFromStartTime(draftStart, index)">Start</button>
+                  <input v-model="draftStart" class="editor-input time-input-edit" type="text" inputmode="numeric" />
+                </div>
+                <div class="editor-time-row">
+                  <button type="button" class="editor-time-btn" @click.stop="playFromEndTimeBefore(draftEnd, 2500)">End</button>
+                  <input v-model="draftEnd" class="editor-input time-input-edit" type="text" inputmode="numeric" />
                 </div>
                 <template v-if="isTranslated">
                   <label class="editor-label input">Input</label>
@@ -1695,6 +1697,36 @@ h2 {
   align-items: center;
 }
 
+.editor-time-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.editor-time-btn {
+  padding: 6px 12px;
+  border: 1px solid #4e73df;
+  border-radius: 6px;
+  background: #4e73df;
+  color: white;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  touch-action: manipulation;
+  min-width: 50px;
+}
+
+.editor-time-btn:hover {
+  background: #3a5fc8;
+}
+
+.time-input-edit {
+  flex: 1;
+  font-family: monospace;
+  font-size: 0.9rem;
+}
+
 .editor-input {
   border: 1px solid #d1d5e6;
   border-radius: 8px;
@@ -2135,11 +2167,11 @@ h2 {
 .entry-content {
   margin-top: 12px;
   cursor: pointer;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
   padding: 8px;
   border-radius: 6px;
   transition: background 0.15s;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .entry-content:hover {
