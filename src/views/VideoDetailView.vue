@@ -21,6 +21,31 @@
 
     <section v-if="videoUrl" class="player">
       <video ref="videoRef" controls playsinline webkit-playsinline :src="videoUrl"></video>
+      <div class="player-controls">
+        <div class="speed-control">
+          <label>Speed:</label>
+          <select v-model="playbackSpeed" @change="updatePlaybackSpeed">
+            <option value="0.5">0.5x</option>
+            <option value="0.75">0.75x</option>
+            <option value="1" selected>1x</option>
+            <option value="1.25">1.25x</option>
+            <option value="1.5">1.5x</option>
+            <option value="2">2x</option>
+          </select>
+        </div>
+        <button class="tips-btn" @click="toggleTips">
+          ▶ {{ showTips ? 'Hide tips' : 'Show tips' }}
+        </button>
+      </div>
+      <div v-if="showTips" class="tips-panel">
+        <p><strong>Tips:</strong></p>
+        <ul>
+          <li>Use +/- buttons to adjust timestamps by 100ms</li>
+          <li>Click → to play from that timestamp</li>
+          <li>Drag entries to merge them</li>
+          <li>Edit to modify text and times</li>
+        </ul>
+      </div>
     </section>
 
     <div class="tabs">
@@ -117,8 +142,19 @@
               </div>
             </div>
             <template v-else>
-              <div class="time">
-                {{ entry.start }} → {{ entry.end }}
+              <div class="time-controls">
+                <div class="time-row">
+                  <button type="button" class="time-adjust" @click.stop="adjustTime(index, 'start', -100)">−</button>
+                  <span class="time-value">{{ entry.start }}</span>
+                  <button type="button" class="time-adjust" @click.stop="adjustTime(index, 'start', 100)">+</button>
+                  <button type="button" class="time-play" @click.stop="playFromTime(entry.start)">→</button>
+                </div>
+                <div class="time-row">
+                  <button type="button" class="time-adjust" @click.stop="adjustTime(index, 'end', -100)">−</button>
+                  <span class="time-value">{{ entry.end }}</span>
+                  <button type="button" class="time-adjust" @click.stop="adjustTime(index, 'end', 100)">+</button>
+                  <button type="button" class="time-play" @click.stop="playFromTime(entry.end)">→</button>
+                </div>
               </div>
               <div v-if="isTranslated" class="entry-texts">
                 <p class="text-line input">{{ entry.inputText || '' }}</p>
@@ -198,6 +234,8 @@ const selectedFolderPath = ref('');
 const folderLoading = ref(false);
 const folderError = ref('');
 const videoRef = ref(null);
+const playbackSpeed = ref('1');
+const showTips = ref(false);
 const showTabLabel = 'Show transcripts';
 let videoSegmentEndSeconds = null;
 let videoTimeUpdateHandler = null;
@@ -784,6 +822,49 @@ async function fetchFolderTree() {
   } finally {
     folderLoading.value = false;
   }
+}
+
+function updatePlaybackSpeed() {
+  if (videoRef.value) {
+    videoRef.value.playbackRate = parseFloat(playbackSpeed.value);
+  }
+}
+
+function toggleTips() {
+  showTips.value = !showTips.value;
+}
+
+function parseTimeToMs(timeStr) {
+  // Parse "HH:MM:SS,mmm" or "HH:MM:SS.mmm" format to milliseconds
+  const match = timeStr.match(/(\d{2}):(\d{2}):(\d{2})[,.](\d{3})/);
+  if (!match) return 0;
+  const [, hours, minutes, seconds, ms] = match;
+  return (parseInt(hours) * 3600 + parseInt(minutes) * 60 + parseInt(seconds)) * 1000 + parseInt(ms);
+}
+
+function msToTimeStr(ms) {
+  // Convert milliseconds to "HH:MM:SS,mmm" format
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const milliseconds = ms % 1000;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
+}
+
+function adjustTime(index, field, deltaMs) {
+  const entry = editableEntries.value[index];
+  if (!entry) return;
+  const currentMs = parseTimeToMs(entry[field]);
+  const newMs = Math.max(0, currentMs + deltaMs);
+  entry[field] = msToTimeStr(newMs);
+}
+
+function playFromTime(timeStr) {
+  if (!videoRef.value) return;
+  const ms = parseTimeToMs(timeStr);
+  videoRef.value.currentTime = ms / 1000;
+  videoRef.value.play();
 }
 
 function goBack() {
@@ -1426,5 +1507,128 @@ h2 {
 .clip-status {
   color: #4e73df;
   font-weight: 600;
+}
+
+.player-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+  padding: 10px;
+  background: #f8f9fc;
+  border-radius: 8px;
+}
+
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.speed-control label {
+  font-weight: 600;
+  color: #5a5c69;
+}
+
+.speed-control select {
+  padding: 6px 10px;
+  border: 1px solid #d1d3e2;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  background: white;
+}
+
+.tips-btn {
+  padding: 8px 14px;
+  border: 1px solid #4e73df;
+  border-radius: 6px;
+  background: white;
+  color: #4e73df;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tips-btn:hover {
+  background: #4e73df;
+  color: white;
+}
+
+.tips-panel {
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: #e8f4fd;
+  border-radius: 8px;
+  border-left: 4px solid #4e73df;
+}
+
+.tips-panel p {
+  margin: 0 0 8px;
+}
+
+.tips-panel ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.tips-panel li {
+  margin: 4px 0;
+  color: #5a5c69;
+}
+
+.time-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.time-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.time-adjust {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #d1d3e2;
+  border-radius: 6px;
+  background: #f8f9fc;
+  color: #4e73df;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.time-adjust:hover {
+  background: #4e73df;
+  color: white;
+}
+
+.time-value {
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: #5a5c69;
+  min-width: 100px;
+}
+
+.time-play {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: #1cc88a;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.time-play:hover {
+  background: #17a673;
 }
 </style>
