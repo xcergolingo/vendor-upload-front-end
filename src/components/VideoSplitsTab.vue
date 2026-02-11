@@ -72,6 +72,32 @@
                 {{ folder.splits.length }} video{{ folder.splits.length === 1 ? '' : 's' }}
               </span>
             </div>
+            <!-- Folder quick actions -->
+            <div v-if="folder.splits.length" class="folder-quick-actions">
+              <button 
+                type="button" 
+                class="quick-btn index-all"
+                :disabled="folder.isIndexingAll"
+                @click="indexAllInFolder(folder)"
+              >
+                {{ folder.isIndexingAll ? 'Indexing...' : 'Index All' }}
+              </button>
+              <button 
+                type="button" 
+                class="quick-btn download-all"
+                @click="addAllToDownload(folder)"
+              >
+                Add All to Download
+              </button>
+              <button 
+                type="button" 
+                class="quick-btn delete-all"
+                :disabled="folder.isDeletingAll"
+                @click="deleteAllInFolder(folder)"
+              >
+                {{ folder.isDeletingAll ? 'Deleting...' : 'Delete All' }}
+              </button>
+            </div>
             <ul v-if="folder.splits.length && isFolderExpanded(folder.path)" class="folder-videos">
               <li
                 v-for="(split, fSplitIndex) in folder.splits"
@@ -102,14 +128,34 @@
                 <div class="video-controls">
                   <div class="timestamp-control">
                     <button type="button" class="time-btn" @click="adjustFolderSplitTime(folder.path, split, fSplitIndex, -0.5)">−</button>
-                    <span class="time-display">{{ formatTime(split.currentTime || 0) }}</span>
+                    <span 
+                      class="time-display clickable" 
+                      @click="playFolderSplitLoop(folder.path, split, fSplitIndex)"
+                    >{{ formatTime(split.currentTime || 0) }}</span>
                     <button type="button" class="time-btn" @click="adjustFolderSplitTime(folder.path, split, fSplitIndex, 0.5)">+</button>
                   </div>
                   <div class="position-buttons">
                     <button type="button" class="pos-btn" @click="playFolderSplitAt(folder.path, split, fSplitIndex, 'beginning')">Beginning</button>
                     <button type="button" class="pos-btn" @click="playFolderSplitAt(folder.path, split, fSplitIndex, 'middle')">Middle</button>
-                    <button type="button" class="pos-btn" @click="playFolderSplitAt(folder.path, split, fSplitIndex, 'end')">End</button>
+                    <button type="button" class="pos-btn" @click="playFolderSplitAtEnd(folder.path, split, fSplitIndex)">End</button>
                   </div>
+                </div>
+                <!-- Folder move dropdown -->
+                <div class="folder-move">
+                  <label>Move to:</label>
+                  <select 
+                    :value="split.folder || ''" 
+                    @change="moveSplitToFolder(split, $event.target.value)"
+                  >
+                    <option value="">None</option>
+                    <option
+                      v-for="opt in folderOptions"
+                      :key="opt.path"
+                      :value="opt.path"
+                    >
+                      {{ opt.label }}
+                    </option>
+                  </select>
                 </div>
                 <p v-if="split.video_url" class="video-url">
                   <a :href="split.video_url" target="_blank" rel="noopener noreferrer">
@@ -147,14 +193,34 @@
           <div class="video-controls">
             <div class="timestamp-control">
               <button type="button" class="time-btn" @click="adjustSplitTime(split, splitIndex, -0.5)">−</button>
-              <span class="time-display">{{ formatTime(split.currentTime || 0) }}</span>
+              <span 
+                class="time-display clickable" 
+                @click="playSplitLoop(split, splitIndex)"
+              >{{ formatTime(split.currentTime || 0) }}</span>
               <button type="button" class="time-btn" @click="adjustSplitTime(split, splitIndex, 0.5)">+</button>
             </div>
             <div class="position-buttons">
               <button type="button" class="pos-btn" @click="playSplitAt(split, splitIndex, 'beginning')">Beginning</button>
               <button type="button" class="pos-btn" @click="playSplitAt(split, splitIndex, 'middle')">Middle</button>
-              <button type="button" class="pos-btn" @click="playSplitAt(split, splitIndex, 'end')">End</button>
+              <button type="button" class="pos-btn" @click="playSplitAtEnd(split, splitIndex)">End</button>
             </div>
+          </div>
+          <!-- Folder move dropdown -->
+          <div class="folder-move">
+            <label>Move to:</label>
+            <select 
+              :value="split.folder || ''" 
+              @change="moveSplitToFolder(split, $event.target.value)"
+            >
+              <option value="">None</option>
+              <option
+                v-for="opt in folderOptions"
+                :key="opt.path"
+                :value="opt.path"
+              >
+                {{ opt.label }}
+              </option>
+            </select>
           </div>
           <p v-if="split.video_url" class="video-url">
             <a :href="split.video_url" target="_blank" rel="noopener noreferrer">
@@ -383,6 +449,140 @@ function adjustFolderSplitTime(folderPath, split, index, delta) {
   const newTime = Math.max(0, Math.min(video.duration || 0, (video.currentTime || 0) + delta));
   video.currentTime = newTime;
   split.currentTime = newTime;
+}
+
+// Play 2.5 seconds before end
+function playSplitAtEnd(split, index) {
+  const video = splitVideoRefs.value[index];
+  if (!video) return;
+  const duration = video.duration || 0;
+  video.currentTime = Math.max(0, duration - 2.5);
+  video.play();
+}
+
+function playFolderSplitAtEnd(folderPath, split, index) {
+  const video = folderVideoRefs.value[`${folderPath}-${index}`];
+  if (!video) return;
+  const duration = video.duration || 0;
+  video.currentTime = Math.max(0, duration - 2.5);
+  video.play();
+}
+
+// Play from timestamp and loop
+function playSplitLoop(split, index) {
+  const video = splitVideoRefs.value[index];
+  if (!video) return;
+  video.loop = true;
+  video.play();
+}
+
+function playFolderSplitLoop(folderPath, split, index) {
+  const video = folderVideoRefs.value[`${folderPath}-${index}`];
+  if (!video) return;
+  video.loop = true;
+  video.play();
+}
+
+// Folder bulk actions
+async function indexAllInFolder(folder) {
+  if (!folder.splits.length) return;
+  const confirmed = window.confirm(`Index all ${folder.splits.length} clips in "${folder.name}"? This will add them to search.`);
+  if (!confirmed) return;
+  
+  folder.isIndexingAll = true;
+  try {
+    for (const split of folder.splits) {
+      if (split.if_indexed) continue;
+      await fetch(
+        'https://igr9sg55zi.execute-api.us-east-1.amazonaws.com/prod/index-video-split-and-sentence-to-search',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_name: props.userEmail,
+            timestamp: split.timestamp,
+            priority_score: 1
+          })
+        }
+      );
+      split.if_indexed = true;
+    }
+    alert(`Successfully indexed ${folder.splits.length} clips.`);
+  } catch (err) {
+    console.error(err);
+    alert('Failed to index some clips.');
+  } finally {
+    folder.isIndexingAll = false;
+  }
+}
+
+function addAllToDownload(folder) {
+  if (!folder.splits.length) return;
+  const confirmed = window.confirm(`Add all ${folder.splits.length} clips from "${folder.name}" to download?`);
+  if (!confirmed) return;
+  
+  let added = 0;
+  for (const split of folder.splits) {
+    if (!isInDownload(split)) {
+      addToDownload(split);
+      added++;
+    }
+  }
+  alert(`Added ${added} clips to download.`);
+}
+
+async function deleteAllInFolder(folder) {
+  if (!folder.splits.length) return;
+  const confirmed = window.confirm(`DELETE all ${folder.splits.length} clips in "${folder.name}"? This cannot be undone!`);
+  if (!confirmed) return;
+  
+  folder.isDeletingAll = true;
+  try {
+    for (const split of folder.splits) {
+      if (split.timestamp === undefined || split.timestamp === null) continue;
+      await fetch(
+        'https://igr9sg55zi.execute-api.us-east-1.amazonaws.com/prod/delete-video-split-clip-and-sentence',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_name: props.userEmail, timestamp: split.timestamp })
+        }
+      );
+    }
+    await fetchSplits();
+    alert('All clips deleted.');
+  } catch (err) {
+    console.error(err);
+    alert('Failed to delete some clips.');
+  } finally {
+    folder.isDeletingAll = false;
+  }
+}
+
+// Move split to different folder
+async function moveSplitToFolder(split, newFolderPath) {
+  if (!props.userEmail) return;
+  
+  try {
+    await fetch(
+      'https://igr9sg55zi.execute-api.us-east-1.amazonaws.com/prod/update-video-split-folder',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_name: props.userEmail,
+          timestamp: split.timestamp,
+          folder: newFolderPath
+        })
+      }
+    );
+    split.folder = newFolderPath;
+    // Refresh to update folder groupings
+    await fetchSplits();
+  } catch (err) {
+    console.error(err);
+    alert('Failed to move clip. Please try again.');
+  }
 }
 
 function normalizeLanguageCode(value) {
@@ -1452,6 +1652,104 @@ video {
     flex: 1;
     min-width: 80px;
     text-align: center;
+  }
+}
+
+/* Folder quick actions */
+.folder-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px;
+  background: #f0f3ff;
+  border-radius: 6px;
+}
+
+.quick-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.quick-btn.index-all {
+  background: #1cc88a;
+  color: white;
+}
+
+.quick-btn.download-all {
+  background: #36b9cc;
+  color: white;
+}
+
+.quick-btn.delete-all {
+  background: #e74a3b;
+  color: white;
+}
+
+.quick-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Folder move dropdown */
+.folder-move {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px;
+  background: #f8f9fc;
+  border-radius: 6px;
+}
+
+.folder-move label {
+  font-size: 0.85rem;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.folder-move select {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #d1d3e2;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  background: white;
+}
+
+/* Clickable timestamp */
+.time-display.clickable {
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.time-display.clickable:hover {
+  background: #e8f4fd;
+}
+
+.time-display.clickable:active {
+  background: #d0e8f7;
+}
+
+@media (max-width: 480px) {
+  .folder-quick-actions {
+    flex-direction: column;
+  }
+  
+  .quick-btn {
+    width: 100%;
+    text-align: center;
+  }
+  
+  .folder-move {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

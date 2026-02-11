@@ -1259,16 +1259,38 @@ function mergeWithNext(index) {
 async function regenEntry(index) {
   const entry = editableEntries.value[index];
   if (!entry || entry.isRegenerating) return;
+  if (!authState.userEmail || !decodedFileName.value) return;
+  
   entry.isRegenerating = true;
   try {
-    // Call regeneration API - placeholder for now
-    // This would typically call an API to regenerate the translation
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    // For now, just mark as done
-    alert('Regeneration complete (API integration needed)');
+    // Call API to generate clip for this entry
+    const response = await fetch(
+      'https://igr9sg55zi.execute-api.us-east-1.amazonaws.com/prod/generate-single-clip',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_name: authState.userEmail,
+          file_name: decodedFileName.value,
+          start_time: entry.start,
+          end_time: entry.end,
+          sent: entry.inputText || entry.text || '',
+          sent_translation: entry.outputText || '',
+          lang: inputLang.value || 'auto',
+          lang_translation: outputLang.value || '',
+          folder: selectedFolderPath.value || ''
+        })
+      }
+    );
+    
+    if (!response.ok) {
+      throw new Error('Generation failed');
+    }
+    
+    alert('Clip generated successfully!');
   } catch (err) {
     console.error(err);
-    alert('Failed to regenerate. Please try again.');
+    alert('Failed to generate clip. Please try again.');
   } finally {
     entry.isRegenerating = false;
   }
@@ -1534,6 +1556,9 @@ function cancelEntryEdit() {
 }
 
 function resetTranscripts() {
+  const confirmed = window.confirm('Reset all transcripts to original? Your edits will be lost.');
+  if (!confirmed) return;
+  
   try {
     editableEntries.value = cloneEntries(baselineEntries.value);
     clearDragState();
