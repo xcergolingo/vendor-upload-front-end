@@ -569,24 +569,28 @@ function buildEditableEntries(baseEntries, overlayEntries, baseVariant) {
   }));
 
   const merged = [];
-  let overlayIndex = 0;
+  
+  // If entry counts are similar, use index-based matching as fallback
+  const useIndexFallback = Math.abs(updatedBase.length - normalizedOverlay.length) <= 2;
 
-  for (const baseEntry of updatedBase) {
+  for (let baseIndex = 0; baseIndex < updatedBase.length; baseIndex++) {
+    const baseEntry = updatedBase[baseIndex];
     let matchedOverlayText = '';
-    while (overlayIndex < normalizedOverlay.length) {
-      const overlayEntry = normalizedOverlay[overlayIndex];
-      if (timestampsMatch(baseEntry, overlayEntry)) {
+    
+    // First try: find by timestamp match (with wider tolerance)
+    for (let i = 0; i < normalizedOverlay.length; i++) {
+      const overlayEntry = normalizedOverlay[i];
+      const startDelta = Math.abs(timestampToMs(baseEntry.start) - timestampToMs(overlayEntry.start));
+      // Wider tolerance: 500ms instead of 20ms
+      if (startDelta <= 500) {
         matchedOverlayText = overlayEntry.text || '';
-        overlayIndex += 1;
         break;
       }
-      const overlayStart = timestampToMs(overlayEntry.start);
-      const baseStart = timestampToMs(baseEntry.start);
-      if (overlayStart < baseStart - 20) {
-        overlayIndex += 1;
-        continue;
-      }
-      break;
+    }
+    
+    // Fallback: match by index if counts are similar and no timestamp match found
+    if (!matchedOverlayText && useIndexFallback && baseIndex < normalizedOverlay.length) {
+      matchedOverlayText = normalizedOverlay[baseIndex].text || '';
     }
 
     if (baseVariant === 'input') {
