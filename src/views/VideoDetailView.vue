@@ -111,7 +111,7 @@
                 <span 
                   class="time-value" 
                   :class="{ 'editing': editingTimeIndex === index && editingTimeField === 'start' }"
-                  @click.stop="playFromStartTime(entry.start)"
+                  @click.stop="playFromStartTime(entry.start, index)"
                   @dblclick.stop.prevent="startTimeEdit(index, 'start', entry.start)"
                 >
                   <input 
@@ -956,20 +956,42 @@ function playFromTimeBefore(timeStr, beforeMs) {
 }
 
 // Play from start time (just plays, no stop)
-function playFromStartTime(timeStr) {
+// Play from start time and stop at end time of the entry
+function playFromStartTime(startTimeStr, index) {
   if (!videoRef.value) return;
-  const ms = parseTimeToMs(timeStr);
-  videoRef.value.currentTime = ms / 1000;
+  const entry = editableEntries.value[index];
+  if (!entry) return;
+  const startMs = parseTimeToMs(startTimeStr);
+  const endMs = parseTimeToMs(entry.end);
+  videoRef.value.currentTime = startMs / 1000;
   videoRef.value.play();
+  
+  // Stop at end time
+  const checkStop = () => {
+    if (videoRef.value && videoRef.value.currentTime >= endMs / 1000) {
+      videoRef.value.pause();
+      videoRef.value.removeEventListener('timeupdate', checkStop);
+    }
+  };
+  videoRef.value.addEventListener('timeupdate', checkStop);
 }
 
-// Play from 2.5s before end time
-function playFromEndTimeBefore(timeStr, beforeMs) {
+// Play from 2.5s before end time and stop at end time
+function playFromEndTimeBefore(endTimeStr, beforeMs) {
   if (!videoRef.value) return;
-  const ms = parseTimeToMs(timeStr);
-  const targetMs = Math.max(0, ms - beforeMs);
+  const endMs = parseTimeToMs(endTimeStr);
+  const targetMs = Math.max(0, endMs - beforeMs);
   videoRef.value.currentTime = targetMs / 1000;
   videoRef.value.play();
+  
+  // Stop at end time
+  const checkStop = () => {
+    if (videoRef.value && videoRef.value.currentTime >= endMs / 1000) {
+      videoRef.value.pause();
+      videoRef.value.removeEventListener('timeupdate', checkStop);
+    }
+  };
+  videoRef.value.addEventListener('timeupdate', checkStop);
 }
 
 // Play from start to end (stop at end timestamp)
@@ -1530,10 +1552,11 @@ h2 {
 .editable-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   max-height: 480px;
   overflow-y: auto;
   padding-right: 4px;
+  padding-top: 12px;
 }
 
 .editable-entry {
@@ -1800,15 +1823,23 @@ h2 {
   padding: 8px 14px;
   border: 1px solid #4e73df;
   border-radius: 6px;
-  background: white;
-  color: #4e73df;
+  background: #4e73df;
+  color: white;
   font-weight: 600;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .tips-btn:hover {
-  background: #4e73df;
-  color: white;
+  background: #3a5fc8;
+}
+
+.tips-btn:active {
+  background: #2e4da3;
+}
+
+.player {
+  margin-bottom: 16px;
 }
 
 .tips-panel {
@@ -1848,62 +1879,61 @@ h2 {
 
 @media (max-width: 480px) {
   .time-row {
-    gap: 4px;
+    gap: 3px;
   }
   
   .time-adjust {
-    width: 30px;
-    height: 30px;
-    font-size: 1.1rem;
+    width: 26px;
+    height: 26px;
+    font-size: 1rem;
   }
   
   .copy-btn {
-    width: 26px;
-    height: 26px;
-    font-size: 0.9rem;
+    width: 22px;
+    height: 22px;
+    font-size: 0.75rem;
   }
   
   .merge-btn {
-    padding: 4px 6px;
-    font-size: 0.7rem;
+    padding: 2px 5px;
+    font-size: 0.65rem;
   }
   
   .action-btn {
-    padding: 4px 6px;
-    font-size: 0.7rem;
+    padding: 2px 5px;
+    font-size: 0.65rem;
   }
   
   .entry-card {
     padding: 10px;
-    padding-top: 40px;
   }
   
   .entry-top-actions {
-    top: 6px;
-    right: 6px;
+    top: -6px;
+    right: -6px;
   }
   
   .top-btn {
-    width: 26px;
-    height: 26px;
-    font-size: 1.1rem;
+    width: 20px;
+    height: 20px;
+    font-size: 0.85rem;
   }
   
   .time-value {
-    min-width: 85px;
-    font-size: 0.8rem;
+    min-width: 80px;
+    font-size: 0.75rem;
   }
 }
 
 .time-adjust {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border: 1px solid #d1d3e2;
-  border-radius: 6px;
+  border-radius: 4px;
   background: #f8f9fc;
   color: #4e73df;
   font-weight: 700;
-  font-size: 1rem;
+  font-size: 0.9rem;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1920,9 +1950,9 @@ h2 {
 
 .time-value {
   font-family: monospace;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   color: #5a5c69;
-  min-width: 100px;
+  min-width: 90px;
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
@@ -1965,32 +1995,33 @@ h2 {
   position: relative;
   border: 1px solid #e3e6f0;
   border-radius: 10px;
-  padding: 16px;
-  padding-top: 44px;
+  padding: 12px;
   background: white;
   margin-bottom: 12px;
 }
 
 .entry-top-actions {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: -8px;
+  right: -8px;
   display: flex;
-  gap: 6px;
+  gap: 2px;
+  z-index: 5;
 }
 
 .top-btn {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   border: none;
-  font-size: 1.2rem;
+  font-size: 0.9rem;
   font-weight: bold;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   touch-action: manipulation;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 
 .add-btn {
@@ -2008,13 +2039,13 @@ h2 {
 }
 
 .copy-btn {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   border: 1px solid #36b9cc;
-  border-radius: 6px;
+  border-radius: 4px;
   background: white;
   color: #36b9cc;
-  font-size: 1rem;
+  font-size: 0.8rem;
   font-weight: bold;
   cursor: pointer;
   display: flex;
@@ -2041,16 +2072,17 @@ h2 {
 }
 
 .merge-btn {
-  padding: 4px 10px;
+  padding: 2px 6px;
   border: 1px solid #4e73df;
-  border-radius: 6px;
+  border-radius: 4px;
   background: white;
   color: #4e73df;
-  font-size: 0.85rem;
+  font-size: 0.7rem;
   font-weight: 600;
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
 }
 
 .merge-btn:hover:not(:disabled) {
@@ -2064,12 +2096,14 @@ h2 {
 }
 
 .action-btn {
-  padding: 4px 12px;
+  padding: 2px 8px;
   border: 1px solid #d1d3e2;
-  border-radius: 6px;
-  font-size: 0.85rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
   font-weight: 600;
   cursor: pointer;
+  touch-action: manipulation;
+  white-space: nowrap;
 }
 
 .edit-btn {
