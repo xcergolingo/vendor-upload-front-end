@@ -859,13 +859,26 @@ async function fetchTranscripts() {
 
     const baseVariant = isActuallyTranslated && parsedInput.length ? 'input' : 'output';
     editBaseVariant.value = baseVariant;
-    const baseEntries =
-      baseVariant === 'input'
-        ? parsedInput
-        : parsedOutputForEditing.length
-          ? parsedOutputForEditing
-          : parsedInput;
-    const overlayEntries = baseVariant === 'input' ? parsedOutputForEditing : parsedInput;
+    
+    // Determine base and overlay entries for editing
+    // Base = the language being edited (possibly with saved edits)
+    // Overlay = the translation language (always original for correct pairing)
+    let baseEntries;
+    let overlayEntries;
+    
+    if (baseVariant === 'input') {
+      // Editing input (e.g., French): base is input, overlay is output (English translation)
+      // If srt_edited exists, it contains edited input - parse it for the base
+      baseEntries = editedSrtValue 
+        ? assignIndexes(parseSrt(editedSrtValue))
+        : parsedInput;
+      // Overlay is ALWAYS the original output (translation) - never use edited here
+      overlayEntries = parsedOutput;
+    } else {
+      // Editing output (e.g., English): base is output, overlay is input
+      baseEntries = parsedOutputForEditing.length ? parsedOutputForEditing : parsedInput;
+      overlayEntries = parsedInput;
+    }
     const baselineBaseEntries =
       baseVariant === 'input'
         ? parsedInput
