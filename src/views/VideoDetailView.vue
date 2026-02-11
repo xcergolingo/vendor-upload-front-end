@@ -2081,8 +2081,8 @@ h2 {
   }
   
   .entry-content {
-    margin-left: 30px; /* Align with - button on mobile */
-    padding: 6px;
+    margin-left: 0; /* Align with - button */
+    padding: 6px 0;
   }
   
   .text-line.input {
@@ -2308,9 +2308,9 @@ h2 {
 
 .entry-content {
   margin-top: 10px;
-  margin-left: 28px; /* Align with the decrease button */
+  margin-left: 0; /* Align with the - button */
   cursor: pointer;
-  padding: 8px;
+  padding: 8px 0;
   border-radius: 6px;
   transition: background 0.15s;
   user-select: text;
