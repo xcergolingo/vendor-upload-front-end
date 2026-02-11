@@ -2057,6 +2057,7 @@ h2 {
   
   .entry-card {
     padding: 10px;
+    padding-top: 18px; /* Space below + and x buttons */
   }
   
   .entry-top-actions {
@@ -2073,6 +2074,23 @@ h2 {
   .time-value {
     min-width: 80px;
     font-size: 0.75rem;
+  }
+  
+  .entry-content {
+    margin-left: 30px; /* Align with - button on mobile */
+    padding: 6px;
+  }
+  
+  .text-line.input {
+    font-size: 0.85rem;
+  }
+  
+  .text-line.output {
+    font-size: 0.8rem;
+  }
+  
+  .text-line.single {
+    font-size: 0.85rem;
   }
 }
 
@@ -2147,6 +2165,7 @@ h2 {
   border: 1px solid #e3e6f0;
   border-radius: 10px;
   padding: 12px;
+  padding-top: 20px; /* More space below + and x buttons */
   background: white;
   margin-bottom: 12px;
 }
@@ -2284,7 +2303,8 @@ h2 {
 }
 
 .entry-content {
-  margin-top: 12px;
+  margin-top: 10px;
+  margin-left: 28px; /* Align with the decrease button */
   cursor: pointer;
   padding: 8px;
   border-radius: 6px;
@@ -2304,18 +2324,24 @@ h2 {
 .text-line.input {
   color: #4e73df;
   font-weight: 600;
+  font-size: 0.9rem;
   margin: 0 0 6px;
+  line-height: 1.4;
 }
 
 .text-line.output {
   color: #1cc88a;
   font-weight: 600;
+  font-size: 0.85rem;
   margin: 0;
+  line-height: 1.4;
 }
 
 .text-line.single {
   color: #5a5c69;
+  font-size: 0.9rem;
   margin: 0;
+  line-height: 1.4;
 }
 
 .reset-btn {
