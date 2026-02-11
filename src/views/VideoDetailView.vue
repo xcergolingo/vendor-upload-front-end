@@ -94,13 +94,13 @@
           >
             <!-- Entry Card -->
             <div class="entry-card">
-              <!-- Floating action buttons (top right) -->
-              <div class="entry-floating-actions">
-                <button type="button" class="float-btn add-btn" @click.stop="cloneEntry(index)" title="Add/Clone">+</button>
-                <button type="button" class="float-btn delete-btn" @click.stop="deleteEntry(index)" title="Delete">×</button>
+              <!-- Top action buttons (clone/delete) -->
+              <div class="entry-top-actions">
+                <button type="button" class="top-btn add-btn" @click.stop="cloneEntry(index)" title="Add/Clone">+</button>
+                <button type="button" class="top-btn delete-btn" @click.stop="deleteEntry(index)" title="Delete">×</button>
               </div>
 
-              <!-- Time controls row 1: Start time - tap to play from this time -->
+              <!-- Time controls row 1: Start time + Merge buttons -->
               <div class="time-row">
                 <button 
                   type="button" 
@@ -111,7 +111,7 @@
                 <span 
                   class="time-value" 
                   :class="{ 'editing': editingTimeIndex === index && editingTimeField === 'start' }"
-                  @click.stop="playFromTime(entry.start)"
+                  @click.stop="playFromStartTime(entry.start)"
                   @dblclick.stop.prevent="startTimeEdit(index, 'start', entry.start)"
                 >
                   <input 
@@ -133,11 +133,18 @@
                   @click.stop="adjustTime(index, 'start', 100)"
                   @dblclick.stop.prevent="adjustTime(index, 'start', 100)"
                 >+</button>
+                <button 
+                  type="button" 
+                  class="copy-btn" 
+                  @click.stop="copyEndFromPrevious(index)" 
+                  :disabled="index === 0"
+                  title="Copy end time from previous clip"
+                >←</button>
                 <button type="button" class="merge-btn" @click.stop="mergeWithPrevious(index)" :disabled="index === 0">↑ Merge</button>
                 <button type="button" class="merge-btn" @click.stop="mergeWithNext(index)" :disabled="index === editableEntries.length - 1">↓ Merge</button>
               </div>
 
-              <!-- Time controls row 2: End time - tap to play from 2.5s before -->
+              <!-- Time controls row 2: End time + Edit/Regen buttons -->
               <div class="time-row">
                 <button 
                   type="button" 
@@ -148,7 +155,7 @@
                 <span 
                   class="time-value"
                   :class="{ 'editing': editingTimeIndex === index && editingTimeField === 'end' }"
-                  @click.stop="playFromTimeBefore(entry.end, 2500)"
+                  @click.stop="playFromEndTimeBefore(entry.end, 2500)"
                   @dblclick.stop.prevent="startTimeEdit(index, 'end', entry.end)"
                 >
                   <input 
@@ -169,6 +176,13 @@
                   @click.stop="adjustTime(index, 'end', 100)"
                   @dblclick.stop.prevent="adjustTime(index, 'end', 100)"
                 >+</button>
+                <button 
+                  type="button" 
+                  class="copy-btn" 
+                  @click.stop="copyStartFromNext(index)" 
+                  :disabled="index === editableEntries.length - 1"
+                  title="Copy start time from next clip"
+                >→</button>
                 <button type="button" class="action-btn edit-btn" @click.stop="startEntryEdit(entry, index)" :disabled="editingIndex !== null && editingIndex !== index">Edit</button>
                 <button type="button" class="action-btn regen-btn" @click.stop="regenEntry(index)" :disabled="entry.isRegenerating">{{ entry.isRegenerating ? 'Regen...' : 'Regen' }}</button>
               </div>
@@ -196,8 +210,11 @@
                 </div>
               </div>
 
-              <!-- Text content -->
-              <div v-else class="entry-content">
+              <!-- Text content - tap to play, double-tap to play from middle -->
+              <div v-else class="entry-content" 
+                @click.stop="playEntryFull(entry)"
+                @dblclick.stop.prevent="playEntryFromMiddle(entry)"
+              >
                 <p v-if="isTranslated" class="text-line input">{{ entry.inputText || '' }}</p>
                 <p v-if="isTranslated" class="text-line output">{{ entry.outputText || '' }}</p>
                 <p v-if="!isTranslated" class="text-line single">{{ entry.text }}</p>
@@ -936,6 +953,80 @@ function playFromTimeBefore(timeStr, beforeMs) {
   const targetMs = Math.max(0, ms - beforeMs);
   videoRef.value.currentTime = targetMs / 1000;
   videoRef.value.play();
+}
+
+// Play from start time (just plays, no stop)
+function playFromStartTime(timeStr) {
+  if (!videoRef.value) return;
+  const ms = parseTimeToMs(timeStr);
+  videoRef.value.currentTime = ms / 1000;
+  videoRef.value.play();
+}
+
+// Play from 2.5s before end time
+function playFromEndTimeBefore(timeStr, beforeMs) {
+  if (!videoRef.value) return;
+  const ms = parseTimeToMs(timeStr);
+  const targetMs = Math.max(0, ms - beforeMs);
+  videoRef.value.currentTime = targetMs / 1000;
+  videoRef.value.play();
+}
+
+// Play from start to end (stop at end timestamp)
+function playEntryFull(entry) {
+  if (!videoRef.value) return;
+  const startMs = parseTimeToMs(entry.start);
+  const endMs = parseTimeToMs(entry.end);
+  videoRef.value.currentTime = startMs / 1000;
+  videoRef.value.play();
+  
+  // Set up listener to stop at end time
+  const checkStop = () => {
+    if (videoRef.value && videoRef.value.currentTime >= endMs / 1000) {
+      videoRef.value.pause();
+      videoRef.value.removeEventListener('timeupdate', checkStop);
+    }
+  };
+  videoRef.value.addEventListener('timeupdate', checkStop);
+}
+
+// Play from middle to end (stop at end timestamp)
+function playEntryFromMiddle(entry) {
+  if (!videoRef.value) return;
+  const startMs = parseTimeToMs(entry.start);
+  const endMs = parseTimeToMs(entry.end);
+  const middleMs = (startMs + endMs) / 2;
+  videoRef.value.currentTime = middleMs / 1000;
+  videoRef.value.play();
+  
+  // Set up listener to stop at end time
+  const checkStop = () => {
+    if (videoRef.value && videoRef.value.currentTime >= endMs / 1000) {
+      videoRef.value.pause();
+      videoRef.value.removeEventListener('timeupdate', checkStop);
+    }
+  };
+  videoRef.value.addEventListener('timeupdate', checkStop);
+}
+
+// Copy end time from previous clip to this clip's start
+function copyEndFromPrevious(index) {
+  if (index === 0) return;
+  const previousEntry = editableEntries.value[index - 1];
+  const currentEntry = editableEntries.value[index];
+  if (previousEntry && currentEntry) {
+    currentEntry.start = previousEntry.end;
+  }
+}
+
+// Copy start time from next clip to this clip's end
+function copyStartFromNext(index) {
+  if (index >= editableEntries.value.length - 1) return;
+  const nextEntry = editableEntries.value[index + 1];
+  const currentEntry = editableEntries.value[index];
+  if (nextEntry && currentEntry) {
+    currentEntry.end = nextEntry.start;
+  }
 }
 
 function startTimeEdit(index, field, currentValue) {
@@ -1761,34 +1852,46 @@ h2 {
   }
   
   .time-adjust {
-    width: 32px;
-    height: 32px;
-    font-size: 1.2rem;
+    width: 30px;
+    height: 30px;
+    font-size: 1.1rem;
+  }
+  
+  .copy-btn {
+    width: 26px;
+    height: 26px;
+    font-size: 0.9rem;
   }
   
   .merge-btn {
-    padding: 4px 8px;
-    font-size: 0.75rem;
+    padding: 4px 6px;
+    font-size: 0.7rem;
   }
   
   .action-btn {
-    padding: 4px 8px;
-    font-size: 0.75rem;
+    padding: 4px 6px;
+    font-size: 0.7rem;
   }
   
   .entry-card {
-    padding: 12px;
+    padding: 10px;
+    padding-top: 40px;
   }
   
-  .entry-floating-actions {
+  .entry-top-actions {
     top: 6px;
     right: 6px;
   }
   
-  .float-btn {
+  .top-btn {
     width: 26px;
     height: 26px;
     font-size: 1.1rem;
+  }
+  
+  .time-value {
+    min-width: 85px;
+    font-size: 0.8rem;
   }
 }
 
@@ -1863,11 +1966,12 @@ h2 {
   border: 1px solid #e3e6f0;
   border-radius: 10px;
   padding: 16px;
+  padding-top: 44px;
   background: white;
   margin-bottom: 12px;
 }
 
-.entry-floating-actions {
+.entry-top-actions {
   position: absolute;
   top: 8px;
   right: 8px;
@@ -1875,7 +1979,7 @@ h2 {
   gap: 6px;
 }
 
-.float-btn {
+.top-btn {
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -1886,6 +1990,7 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: center;
+  touch-action: manipulation;
 }
 
 .add-btn {
@@ -1898,8 +2003,34 @@ h2 {
   color: white;
 }
 
-.float-btn:hover {
+.top-btn:hover {
   opacity: 0.8;
+}
+
+.copy-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #36b9cc;
+  border-radius: 6px;
+  background: white;
+  color: #36b9cc;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+}
+
+.copy-btn:hover:not(:disabled) {
+  background: #36b9cc;
+  color: white;
+}
+
+.copy-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .time-row {
@@ -1969,6 +2100,20 @@ h2 {
 
 .entry-content {
   margin-top: 12px;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  padding: 8px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.entry-content:hover {
+  background: #f8f9fc;
+}
+
+.entry-content:active {
+  background: #e8f4fd;
 }
 
 .text-line.input {
