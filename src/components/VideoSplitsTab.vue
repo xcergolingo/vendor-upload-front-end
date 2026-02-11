@@ -57,20 +57,38 @@
             :style="{ paddingLeft: `${folder.depth * 18}px` }"
           >
             <div class="folder-row">
-              <button
-                type="button"
-                class="folder-toggle"
-                :aria-expanded="isFolderExpanded(folder.path)"
-                @click="toggleFolder(folder.path)"
-              >
-                <span class="folder-name">{{ folder.name }}</span>
-                <span class="folder-toggle-label">
-                  {{ isFolderExpanded(folder.path) ? 'Hide' : 'Show' }}
-                </span>
-              </button>
-              <span class="folder-meta">
-                {{ folder.splits.length }} video{{ folder.splits.length === 1 ? '' : 's' }}
-              </span>
+              <template v-if="renamingFolder === folder.path">
+                <div class="folder-rename-form">
+                  <input 
+                    v-model.trim="renameNewName" 
+                    type="text" 
+                    class="folder-rename-input"
+                    @keyup.enter="confirmRenameFolder(folder)"
+                    @keyup.escape="cancelRenameFolder"
+                  />
+                  <button type="button" class="folder-rename-btn save" @click="confirmRenameFolder(folder)">Save</button>
+                  <button type="button" class="folder-rename-btn cancel" @click="cancelRenameFolder">Cancel</button>
+                </div>
+              </template>
+              <template v-else>
+                <button
+                  type="button"
+                  class="folder-toggle"
+                  :aria-expanded="isFolderExpanded(folder.path)"
+                  @click="toggleFolder(folder.path)"
+                >
+                  <span class="folder-name">{{ folder.name }}</span>
+                  <span class="folder-toggle-label">
+                    {{ isFolderExpanded(folder.path) ? 'Hide' : 'Show' }}
+                  </span>
+                </button>
+                <div class="folder-row-actions">
+                  <button type="button" class="folder-rename-trigger" @click="startRenameFolder(folder)">Rename</button>
+                  <span class="folder-meta">
+                    {{ folder.splits.length }} video{{ folder.splits.length === 1 ? '' : 's' }}
+                  </span>
+                </div>
+              </template>
             </div>
             <!-- Folder quick actions -->
             <div v-if="folder.splits.length" class="folder-quick-actions">
@@ -127,12 +145,12 @@
                 ></video>
                 <div class="video-controls">
                   <div class="timestamp-control">
-                    <button type="button" class="time-btn" @click="adjustFolderSplitTime(folder.path, split, fSplitIndex, -0.5)">−</button>
+                    <button type="button" class="time-btn" @click="adjustFolderSplitTime(folder.path, split, fSplitIndex, -0.1)">−</button>
                     <span 
                       class="time-display clickable" 
-                      @click="playFolderSplitLoop(folder.path, split, fSplitIndex)"
+                      @click="playFolderSplitAtTimestamp(folder.path, split, fSplitIndex)"
                     >{{ formatTime(split.currentTime || 0) }}</span>
-                    <button type="button" class="time-btn" @click="adjustFolderSplitTime(folder.path, split, fSplitIndex, 0.5)">+</button>
+                    <button type="button" class="time-btn" @click="adjustFolderSplitTime(folder.path, split, fSplitIndex, 0.1)">+</button>
                   </div>
                   <div class="position-buttons">
                     <button type="button" class="pos-btn" @click="playFolderSplitAt(folder.path, split, fSplitIndex, 'beginning')">Beginning</button>
@@ -192,12 +210,12 @@
           ></video>
           <div class="video-controls">
             <div class="timestamp-control">
-              <button type="button" class="time-btn" @click="adjustSplitTime(split, splitIndex, -0.5)">−</button>
+              <button type="button" class="time-btn" @click="adjustSplitTime(split, splitIndex, -0.1)">−</button>
               <span 
                 class="time-display clickable" 
-                @click="playSplitLoop(split, splitIndex)"
+                @click="playSplitAtTimestamp(split, splitIndex)"
               >{{ formatTime(split.currentTime || 0) }}</span>
-              <button type="button" class="time-btn" @click="adjustSplitTime(split, splitIndex, 0.5)">+</button>
+              <button type="button" class="time-btn" @click="adjustSplitTime(split, splitIndex, 0.1)">+</button>
             </div>
             <div class="position-buttons">
               <button type="button" class="pos-btn" @click="playSplitAt(split, splitIndex, 'beginning')">Beginning</button>
@@ -367,6 +385,8 @@ const folderSaving = ref(false);
 const expandedFolders = ref(new Set());
 const splitVideoRefs = ref({});
 const folderVideoRefs = ref({});
+const renamingFolder = ref(null);
+const renameNewName = ref('');
 
 function formatTime(seconds) {
   const mins = Math.floor(seconds / 60);
@@ -402,17 +422,28 @@ function playSplitAt(split, index, position) {
   let time = 0;
   if (position === 'beginning') time = 0;
   else if (position === 'middle') time = duration / 2;
-  else if (position === 'end') time = Math.max(0, duration - 0.5);
+  else if (position === 'end') time = Math.max(0, duration - 2.5);
   video.currentTime = time;
-  video.play();
+  split.currentTime = time;
 }
 
 function adjustSplitTime(split, index, delta) {
   const video = splitVideoRefs.value[index];
   if (!video) return;
-  const newTime = Math.max(0, Math.min(video.duration || 0, (video.currentTime || 0) + delta));
+  const duration = video.duration || 0;
+  const currentTime = split.currentTime !== undefined ? split.currentTime : (video.currentTime || 0);
+  const newTime = Math.max(0, Math.min(duration, currentTime + delta));
   video.currentTime = newTime;
   split.currentTime = newTime;
+}
+
+// Play video at the current displayed timestamp
+function playSplitAtTimestamp(split, index) {
+  const video = splitVideoRefs.value[index];
+  if (!video) return;
+  const time = split.currentTime !== undefined ? split.currentTime : 0;
+  video.currentTime = time;
+  video.play();
 }
 
 function playFolderSplitFromBeginning(folderPath, split, index) {
@@ -438,34 +469,46 @@ function playFolderSplitAt(folderPath, split, index, position) {
   let time = 0;
   if (position === 'beginning') time = 0;
   else if (position === 'middle') time = duration / 2;
-  else if (position === 'end') time = Math.max(0, duration - 0.5);
+  else if (position === 'end') time = Math.max(0, duration - 2.5);
   video.currentTime = time;
-  video.play();
+  split.currentTime = time;
 }
 
 function adjustFolderSplitTime(folderPath, split, index, delta) {
   const video = folderVideoRefs.value[`${folderPath}-${index}`];
   if (!video) return;
-  const newTime = Math.max(0, Math.min(video.duration || 0, (video.currentTime || 0) + delta));
+  const duration = video.duration || 0;
+  const currentTime = split.currentTime !== undefined ? split.currentTime : (video.currentTime || 0);
+  const newTime = Math.max(0, Math.min(duration, currentTime + delta));
   video.currentTime = newTime;
   split.currentTime = newTime;
 }
 
-// Play 2.5 seconds before end
+function playFolderSplitAtTimestamp(folderPath, split, index) {
+  const video = folderVideoRefs.value[`${folderPath}-${index}`];
+  if (!video) return;
+  const time = split.currentTime !== undefined ? split.currentTime : 0;
+  video.currentTime = time;
+  video.play();
+}
+
+// Set timestamp to 2.5 seconds before end (or 0 if negative)
 function playSplitAtEnd(split, index) {
   const video = splitVideoRefs.value[index];
   if (!video) return;
   const duration = video.duration || 0;
-  video.currentTime = Math.max(0, duration - 2.5);
-  video.play();
+  const time = Math.max(0, duration - 2.5);
+  video.currentTime = time;
+  split.currentTime = time;
 }
 
 function playFolderSplitAtEnd(folderPath, split, index) {
   const video = folderVideoRefs.value[`${folderPath}-${index}`];
   if (!video) return;
   const duration = video.duration || 0;
-  video.currentTime = Math.max(0, duration - 2.5);
-  video.play();
+  const time = Math.max(0, duration - 2.5);
+  video.currentTime = time;
+  split.currentTime = time;
 }
 
 // Play from timestamp and loop
@@ -753,6 +796,85 @@ function addFolder() {
   newFolderName.value = '';
   folderError.value = '';
   saveFolderTree();
+}
+
+function startRenameFolder(folder) {
+  renamingFolder.value = folder.path;
+  renameNewName.value = folder.name;
+}
+
+function cancelRenameFolder() {
+  renamingFolder.value = null;
+  renameNewName.value = '';
+}
+
+async function confirmRenameFolder(folder) {
+  const newName = String(renameNewName.value || '').trim();
+  if (!newName) {
+    alert('Please enter a new folder name.');
+    return;
+  }
+  if (newName.includes('/')) {
+    alert('Folder name cannot contain "/".');
+    return;
+  }
+  
+  const oldPath = folder.path;
+  const parentPath = folder.parentPath || '';
+  const newPath = parentPath ? `${parentPath}/${newName}` : newName;
+  
+  if (oldPath === newPath) {
+    cancelRenameFolder();
+    return;
+  }
+  
+  if (allFolderPaths.value.includes(newPath)) {
+    alert('A folder with that name already exists.');
+    return;
+  }
+  
+  try {
+    // Update all splits that are in this folder or subfolders
+    const splitsToUpdate = splits.value.filter(split => {
+      const splitFolder = normalizeFolderPath(split?.folder);
+      return splitFolder === oldPath || splitFolder.startsWith(oldPath + '/');
+    });
+    
+    for (const split of splitsToUpdate) {
+      const splitFolder = normalizeFolderPath(split.folder);
+      const updatedFolder = splitFolder === oldPath 
+        ? newPath 
+        : newPath + splitFolder.slice(oldPath.length);
+      
+      await fetch(
+        'https://igr9sg55zi.execute-api.us-east-1.amazonaws.com/prod/update-video-split-folder',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_name: props.userEmail,
+            timestamp: split.timestamp,
+            folder: updatedFolder
+          })
+        }
+      );
+      split.folder = updatedFolder;
+    }
+    
+    // Update manual folder paths
+    manualFolderPaths.value = manualFolderPaths.value.map(path => {
+      if (path === oldPath) return newPath;
+      if (path.startsWith(oldPath + '/')) return newPath + path.slice(oldPath.length);
+      return path;
+    });
+    
+    await saveFolderTree();
+    await fetchSplits();
+    cancelRenameFolder();
+  } catch (err) {
+    console.error('Failed to rename folder:', err);
+    alert('Failed to rename folder. Please try again.');
+  }
 }
 
 function isFolderExpanded(path) {
@@ -1751,5 +1873,61 @@ video {
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+/* Folder rename */
+.folder-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.folder-rename-trigger {
+  padding: 4px 10px;
+  border: 1px solid #d1d3e2;
+  border-radius: 4px;
+  background: white;
+  color: #6b7280;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.folder-rename-trigger:hover {
+  background: #f3f4f6;
+  color: #4e73df;
+}
+
+.folder-rename-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.folder-rename-input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #4e73df;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.folder-rename-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.folder-rename-btn.save {
+  background: #1cc88a;
+  color: white;
+}
+
+.folder-rename-btn.cancel {
+  background: #858796;
+  color: white;
 }
 </style>
