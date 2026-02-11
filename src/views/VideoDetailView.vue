@@ -938,7 +938,7 @@ async function fetchTranscripts() {
 
     baselineEntries.value = cloneEntries(baseline);
     editableEntries.value = cloneEntries(editable);
-    lastUploadedSrt = editedSrtValue || '';
+    lastUploadedSrt = editedSrtRaw || '';
 
     clearDragState();
   } catch (err) {
