@@ -77,96 +77,81 @@
       <p v-else-if="error" class="error">{{ error }}</p>
         <div v-else>
         <div class="edit-toolbar">
-          <button @click="resetTranscripts" :disabled="!isDirty">
+          <button class="reset-btn" @click="resetTranscripts" :disabled="!isDirty">
             Reset transcripts
           </button>
           <span v-if="editLangLabel" class="lang-hint">Editing: {{ editLangLabel }}</span>
-          <span class="hint">Drag a box onto its neighbor to merge them.</span>
         </div>
         <div class="editable-list">
-	          <div
-	            v-for="(entry, index) in editableEntries"
-	            :key="entry.index + '-' + entry.start + '-' + index"
-	            class="editable-entry"
+          <div
+            v-for="(entry, index) in editableEntries"
+            :key="entry.index + '-' + entry.start + '-' + index"
+            class="editable-entry"
             :class="{
               'drag-source': dragSourceIndex === index,
               'drag-target': dragTargetIndex === index && canDropOn(index)
             }"
-            :draggable="editingIndex === null"
-            @click="handleEditableEntryClick(entry)"
-            @dragstart="handleDragStart($event, index)"
-            @dragover.prevent="handleDragOver($event, index)"
-            @dragleave.prevent="handleDragLeave(index)"
-	            @drop.prevent="handleDrop(index)"
-	            @dragend="handleDragEnd"
-	          >
-	            <button
-	              type="button"
-	              class="edit-entry"
-	              @click.stop="startEntryEdit(entry, index)"
-	              :disabled="editingIndex !== null && editingIndex !== index"
-	            >
-	              Edit
-	            </button>
-	            <button
-	              type="button"
-	              class="clone-entry"
-	              @click.stop="cloneEntry(index)"
-	              :disabled="editingIndex !== null"
-	            >
-	              Clone
-	            </button>
-	            <div v-if="editingIndex === index" class="entry-editor">
-	              <div class="editor-times">
-	                <label class="editor-label time">Start</label>
-	                <input v-model="draftStart" class="editor-input" type="text" />
-                <label class="editor-label time">End</label>
-                <input v-model="draftEnd" class="editor-input" type="text" />
+          >
+            <!-- Entry Card -->
+            <div class="entry-card">
+              <!-- Floating action buttons -->
+              <div class="entry-floating-actions">
+                <button type="button" class="float-btn add-btn" @click.stop="cloneEntry(index)" title="Add/Clone">+</button>
+                <button type="button" class="float-btn delete-btn" @click.stop="deleteEntry(index)" title="Delete">×</button>
               </div>
-              <template v-if="isTranslated">
-                <label class="editor-label input">Input</label>
-                <textarea v-model="draftInputText" class="editor-textarea input" rows="2" />
-                <label class="editor-label output">Output</label>
-                <textarea v-model="draftOutputText" class="editor-textarea output" rows="2" />
-              </template>
-              <template v-else>
-                <textarea v-model="draftSingleText" class="editor-textarea single" rows="3" />
-              </template>
-              <div class="editor-actions">
-                <button type="button" class="editor-btn save" @click.stop="saveEntryEdit(index)">
-                  Save
-                </button>
-                <button type="button" class="editor-btn cancel" @click.stop="cancelEntryEdit">
-                  Cancel
-                </button>
+
+              <!-- Time controls row 1: Start time -->
+              <div class="time-row">
+                <button type="button" class="time-adjust" @click.stop="adjustTime(index, 'start', -100)">−</button>
+                <span class="time-value">{{ entry.start }}</span>
+                <button type="button" class="time-adjust" @click.stop="adjustTime(index, 'start', 100)">+</button>
+                <button type="button" class="merge-btn" @click.stop="mergeWithPrevious(index)" :disabled="index === 0">↑ Merge</button>
+                <button type="button" class="merge-btn" @click.stop="mergeWithNext(index)" :disabled="index === editableEntries.length - 1">↓ Merge</button>
+              </div>
+
+              <!-- Time controls row 2: End time -->
+              <div class="time-row">
+                <button type="button" class="time-adjust" @click.stop="adjustTime(index, 'end', -100)">−</button>
+                <span class="time-value">{{ entry.end }}</span>
+                <button type="button" class="time-adjust" @click.stop="adjustTime(index, 'end', 100)">+</button>
+                <button type="button" class="action-btn edit-btn" @click.stop="startEntryEdit(entry, index)" :disabled="editingIndex !== null && editingIndex !== index">Edit</button>
+                <button type="button" class="action-btn regen-btn" @click.stop="regenEntry(index)" :disabled="entry.isRegenerating">{{ entry.isRegenerating ? 'Regen...' : 'Regen' }}</button>
+              </div>
+
+              <!-- Editor panel (when editing) -->
+              <div v-if="editingIndex === index" class="entry-editor">
+                <div class="editor-times">
+                  <label class="editor-label time">Start</label>
+                  <input v-model="draftStart" class="editor-input" type="text" />
+                  <label class="editor-label time">End</label>
+                  <input v-model="draftEnd" class="editor-input" type="text" />
+                </div>
+                <template v-if="isTranslated">
+                  <label class="editor-label input">Input</label>
+                  <textarea v-model="draftInputText" class="editor-textarea input" rows="2" />
+                  <label class="editor-label output">Output</label>
+                  <textarea v-model="draftOutputText" class="editor-textarea output" rows="2" />
+                </template>
+                <template v-else>
+                  <textarea v-model="draftSingleText" class="editor-textarea single" rows="3" />
+                </template>
+                <div class="editor-actions">
+                  <button type="button" class="editor-btn save" @click.stop="saveEntryEdit(index)">Save</button>
+                  <button type="button" class="editor-btn cancel" @click.stop="cancelEntryEdit">Cancel</button>
+                </div>
+              </div>
+
+              <!-- Text content -->
+              <div v-else class="entry-content">
+                <p v-if="isTranslated" class="text-line input">{{ entry.inputText || '' }}</p>
+                <p v-if="isTranslated" class="text-line output">{{ entry.outputText || '' }}</p>
+                <p v-if="!isTranslated" class="text-line single">{{ entry.text }}</p>
               </div>
             </div>
-            <template v-else>
-              <div class="time-controls">
-                <div class="time-row">
-                  <button type="button" class="time-adjust" @click.stop="adjustTime(index, 'start', -100)">−</button>
-                  <span class="time-value">{{ entry.start }}</span>
-                  <button type="button" class="time-adjust" @click.stop="adjustTime(index, 'start', 100)">+</button>
-                  <button type="button" class="time-play" @click.stop="playFromTime(entry.start)">→</button>
-                </div>
-                <div class="time-row">
-                  <button type="button" class="time-adjust" @click.stop="adjustTime(index, 'end', -100)">−</button>
-                  <span class="time-value">{{ entry.end }}</span>
-                  <button type="button" class="time-adjust" @click.stop="adjustTime(index, 'end', 100)">+</button>
-                  <button type="button" class="time-play" @click.stop="playFromTime(entry.end)">→</button>
-                </div>
-              </div>
-              <div v-if="isTranslated" class="entry-texts">
-                <p class="text-line input">{{ entry.inputText || '' }}</p>
-                <p class="text-line output">{{ entry.outputText || '' }}</p>
-              </div>
-              <p v-else>{{ entry.text }}</p>
-            </template>
           </div>
         </div>
-        <div class="clip-actions">
+                <div class="clip-actions">
           <div class="clip-folder">
-            <label for="clip-folder-select">Clip folder</label>
             <select
               id="clip-folder-select"
               v-model="selectedFolderPath"
@@ -180,10 +165,28 @@
             <span v-if="folderLoading" class="clip-folder-status">Loading folders...</span>
             <span v-else-if="folderError" class="clip-folder-status error">{{ folderError }}</span>
           </div>
-          <button @click="generateClips" :disabled="clipLoading || !editableEntries.length">
+          <button class="generate-btn" @click="generateClips" :disabled="clipLoading || !editableEntries.length">
             {{ clipLoading ? 'Generating...' : 'Generate clips' }}
           </button>
           <span v-if="clipStatus" class="clip-status">{{ clipStatus }}</span>
+        </div>
+        <div class="new-subfolder">
+          <h4>New subfolder</h4>
+          <div class="subfolder-form">
+            <input 
+              v-model="newSubfolderName" 
+              type="text" 
+              placeholder="Folder name"
+              class="subfolder-input"
+            />
+            <button 
+              class="create-btn" 
+              @click="createSubfolder" 
+              :disabled="!newSubfolderName.trim() || creatingSubfolder"
+            >
+              {{ creatingSubfolder ? 'Creating...' : 'Create' }}
+            </button>
+          </div>
         </div>
       </div>
     </section>
@@ -236,6 +239,8 @@ const folderError = ref('');
 const videoRef = ref(null);
 const playbackSpeed = ref('1');
 const showTips = ref(false);
+const newSubfolderName = ref('');
+const creatingSubfolder = ref(false);
 const showTabLabel = 'Show transcripts';
 let videoSegmentEndSeconds = null;
 let videoTimeUpdateHandler = null;
@@ -865,6 +870,80 @@ function playFromTime(timeStr) {
   const ms = parseTimeToMs(timeStr);
   videoRef.value.currentTime = ms / 1000;
   videoRef.value.play();
+}
+
+function deleteEntry(index) {
+  const confirmed = window.confirm('Delete this entry?');
+  if (!confirmed) return;
+  editableEntries.value.splice(index, 1);
+}
+
+function mergeWithPrevious(index) {
+  if (index === 0) return;
+  const current = editableEntries.value[index];
+  const previous = editableEntries.value[index - 1];
+  // Merge: keep previous start, use current end, concatenate text
+  previous.end = current.end;
+  if (previous.inputText !== undefined) {
+    previous.inputText = (previous.inputText || '') + ' ' + (current.inputText || '');
+    previous.outputText = (previous.outputText || '') + ' ' + (current.outputText || '');
+  } else {
+    previous.text = (previous.text || '') + ' ' + (current.text || '');
+  }
+  editableEntries.value.splice(index, 1);
+}
+
+function mergeWithNext(index) {
+  if (index >= editableEntries.value.length - 1) return;
+  const current = editableEntries.value[index];
+  const next = editableEntries.value[index + 1];
+  // Merge: keep current start, use next end, concatenate text
+  current.end = next.end;
+  if (current.inputText !== undefined) {
+    current.inputText = (current.inputText || '') + ' ' + (next.inputText || '');
+    current.outputText = (current.outputText || '') + ' ' + (next.outputText || '');
+  } else {
+    current.text = (current.text || '') + ' ' + (next.text || '');
+  }
+  editableEntries.value.splice(index + 1, 1);
+}
+
+async function regenEntry(index) {
+  const entry = editableEntries.value[index];
+  if (!entry || entry.isRegenerating) return;
+  entry.isRegenerating = true;
+  try {
+    // Call regeneration API - placeholder for now
+    // This would typically call an API to regenerate the translation
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    // For now, just mark as done
+    alert('Regeneration complete (API integration needed)');
+  } catch (err) {
+    console.error(err);
+    alert('Failed to regenerate. Please try again.');
+  } finally {
+    entry.isRegenerating = false;
+  }
+}
+
+async function createSubfolder() {
+  const name = newSubfolderName.value.trim();
+  if (!name) return;
+  creatingSubfolder.value = true;
+  try {
+    // Add to folder options
+    const parentPath = selectedFolderPath.value;
+    const newPath = parentPath ? `${parentPath}/${name}` : name;
+    manualFolderPaths.value = [...manualFolderPaths.value, newPath];
+    selectedFolderPath.value = newPath;
+    newSubfolderName.value = '';
+    // Optionally save to backend
+  } catch (err) {
+    console.error(err);
+    alert('Failed to create subfolder.');
+  } finally {
+    creatingSubfolder.value = false;
+  }
 }
 
 function goBack() {
@@ -1630,5 +1709,213 @@ h2 {
 
 .time-play:hover {
   background: #17a673;
+}
+
+.entry-card {
+  position: relative;
+  border: 1px solid #e3e6f0;
+  border-radius: 10px;
+  padding: 16px;
+  background: white;
+  margin-bottom: 12px;
+}
+
+.entry-floating-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.float-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  font-size: 1.2rem;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.add-btn {
+  background: #1cc88a;
+  color: white;
+}
+
+.delete-btn {
+  background: #e74a3b;
+  color: white;
+}
+
+.float-btn:hover {
+  opacity: 0.8;
+}
+
+.time-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.merge-btn {
+  padding: 4px 10px;
+  border: 1px solid #4e73df;
+  border-radius: 6px;
+  background: white;
+  color: #4e73df;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.merge-btn:hover:not(:disabled) {
+  background: #4e73df;
+  color: white;
+}
+
+.merge-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.action-btn {
+  padding: 4px 12px;
+  border: 1px solid #d1d3e2;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.edit-btn {
+  background: white;
+  color: #5a5c69;
+}
+
+.edit-btn:hover:not(:disabled) {
+  background: #5a5c69;
+  color: white;
+}
+
+.regen-btn {
+  background: white;
+  color: #e74a3b;
+  border-color: #e74a3b;
+}
+
+.regen-btn:hover:not(:disabled) {
+  background: #e74a3b;
+  color: white;
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.entry-content {
+  margin-top: 12px;
+}
+
+.text-line.input {
+  color: #4e73df;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+.text-line.output {
+  color: #1cc88a;
+  font-weight: 600;
+  margin: 0;
+}
+
+.text-line.single {
+  color: #5a5c69;
+  margin: 0;
+}
+
+.reset-btn {
+  background: #e74a3b;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reset-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.generate-btn {
+  background: #1cc88a;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.generate-btn:hover:not(:disabled) {
+  background: #17a673;
+}
+
+.generate-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.new-subfolder {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e3e6f0;
+}
+
+.new-subfolder h4 {
+  margin: 0 0 10px;
+  color: #5a5c69;
+  font-weight: 600;
+}
+
+.subfolder-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.subfolder-input {
+  flex: 1;
+  max-width: 200px;
+  padding: 8px 12px;
+  border: 1px solid #d1d3e2;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.create-btn {
+  padding: 8px 16px;
+  background: #858796;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.create-btn:hover:not(:disabled) {
+  background: #6b6d7d;
+}
+
+.create-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>
