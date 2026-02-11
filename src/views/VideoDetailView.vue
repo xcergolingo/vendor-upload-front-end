@@ -227,16 +227,27 @@
         </div>
                 <div class="clip-actions">
           <div class="clip-folder">
-            <select
-              id="clip-folder-select"
-              v-model="selectedFolderPath"
-              :disabled="folderLoading || !folderOptions.length"
-            >
-              <option value="">None</option>
-              <option v-for="option in folderOptions" :key="option.path" :value="option.path">
-                {{ option.label }}
-              </option>
-            </select>
+            <div class="folder-select-row">
+              <select
+                id="clip-folder-select"
+                v-model="selectedFolderPath"
+                :disabled="folderLoading || !folderOptions.length"
+              >
+                <option value="">None</option>
+                <option v-for="option in folderOptions" :key="option.path" :value="option.path">
+                  {{ option.label }}
+                </option>
+              </select>
+              <button 
+                type="button" 
+                class="delete-folder-btn" 
+                @click="deleteSelectedFolder"
+                :disabled="!selectedFolderPath || deletingFolder"
+                title="Delete selected folder"
+              >
+                {{ deletingFolder ? '...' : '🗑' }}
+              </button>
+            </div>
             <span v-if="folderLoading" class="clip-folder-status">Loading folders...</span>
             <span v-else-if="folderError" class="clip-folder-status error">{{ folderError }}</span>
           </div>
@@ -316,6 +327,7 @@ const playbackSpeed = ref('1');
 const showTips = ref(false);
 const newSubfolderName = ref('');
 const creatingSubfolder = ref(false);
+const deletingFolder = ref(false);
 const editingTimeIndex = ref(null);
 const editingTimeField = ref(null);
 const editingTimeValue = ref('');
@@ -1130,23 +1142,101 @@ async function regenEntry(index) {
   }
 }
 
+function buildFolderPayload(paths) {
+  const folders = [];
+  const uniquePaths = Array.from(
+    new Set(
+      paths
+        .map(path => normalizeFolderPath(path))
+        .filter(Boolean)
+    )
+  );
+  uniquePaths.forEach(path => {
+    const segments = path.split('/');
+    const name = segments[segments.length - 1];
+    const parentPath = segments.length > 1 ? segments.slice(0, -1).join('/') : null;
+    folders.push({
+      id: path,
+      name,
+      parent_id: parentPath
+    });
+  });
+  return folders;
+}
+
+async function saveFolderTree() {
+  if (!authState.userEmail) return;
+  try {
+    const response = await fetch(
+      'https://ln686uub5b.execute-api.us-east-1.amazonaws.com/prod/vendor/folder_update',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: authState.userEmail.toLowerCase(),
+          folders: buildFolderPayload(manualFolderPaths.value)
+        })
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Request failed');
+    }
+  } catch (err) {
+    console.error(err);
+    throw err;
+  }
+}
+
 async function createSubfolder() {
   const name = newSubfolderName.value.trim();
   if (!name) return;
+  if (name.includes('/')) {
+    alert('Folder name cannot contain "/"');
+    return;
+  }
   creatingSubfolder.value = true;
   try {
-    // Add to folder options
     const parentPath = selectedFolderPath.value;
     const newPath = parentPath ? `${parentPath}/${name}` : name;
+    
+    // Check if already exists
+    if (manualFolderPaths.value.includes(newPath)) {
+      alert('This folder already exists.');
+      return;
+    }
+    
     manualFolderPaths.value = [...manualFolderPaths.value, newPath];
+    await saveFolderTree();
     selectedFolderPath.value = newPath;
     newSubfolderName.value = '';
-    // Optionally save to backend
   } catch (err) {
     console.error(err);
     alert('Failed to create subfolder.');
   } finally {
     creatingSubfolder.value = false;
+  }
+}
+
+async function deleteSelectedFolder() {
+  const folderPath = selectedFolderPath.value;
+  if (!folderPath) return;
+  
+  const confirmed = window.confirm(`Delete folder "${folderPath}" and all its subfolders?`);
+  if (!confirmed) return;
+  
+  deletingFolder.value = true;
+  try {
+    // Remove this folder and all subfolders
+    manualFolderPaths.value = manualFolderPaths.value.filter(
+      path => path !== folderPath && !path.startsWith(folderPath + '/')
+    );
+    await saveFolderTree();
+    selectedFolderPath.value = '';
+  } catch (err) {
+    console.error(err);
+    alert('Failed to delete folder.');
+  } finally {
+    deletingFolder.value = false;
   }
 }
 
@@ -2259,6 +2349,37 @@ h2 {
 
 .generate-btn:disabled {
   opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.folder-select-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.folder-select-row select {
+  flex: 1;
+}
+
+.delete-folder-btn {
+  padding: 6px 10px;
+  border: 1px solid #e74a3b;
+  border-radius: 6px;
+  background: white;
+  color: #e74a3b;
+  font-size: 0.9rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.delete-folder-btn:hover:not(:disabled) {
+  background: #e74a3b;
+  color: white;
+}
+
+.delete-folder-btn:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
