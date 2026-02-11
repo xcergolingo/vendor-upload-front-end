@@ -505,8 +505,31 @@ async function uploadEditedTranscript() {
   if (!authState.userEmail) return;
   if (!decodedFileName.value) return;
   if (!baselineEntries.value.length) return;
+  if (!isDirty.value) return;
 
-  const payloadSrt = isDirty.value ? editedSrt.value : '';
+  // Save BOTH input and output SRTs to preserve translations after merge
+  const inputSrtEdited = entriesToSrt(
+    editableEntries.value.map(entry => ({
+      start: entry.start,
+      end: entry.end,
+      text: entry.inputText || entry.text || ''
+    }))
+  );
+  const outputSrtEdited = entriesToSrt(
+    editableEntries.value.map(entry => ({
+      start: entry.start,
+      end: entry.end,
+      text: entry.outputText || entry.text || ''
+    }))
+  );
+  
+  // Encode both SRTs as JSON
+  const payloadSrt = JSON.stringify({
+    input: inputSrtEdited,
+    output: outputSrtEdited,
+    variant: editBaseVariant.value
+  });
+  
   if (payloadSrt === lastUploadedSrt) return;
   lastUploadedSrt = payloadSrt;
 
@@ -820,7 +843,7 @@ async function fetchTranscripts() {
       }
     }
     const outputSrtValue = body?.srt || '';
-    const editedSrtValue = body?.srt_edited || '';
+    const editedSrtRaw = body?.srt_edited || '';
     const inputSrtValue = body?.srt_input || '';
     const inputLanguage =
       body?.input_lang ?? body?.lang ?? body?.lang_input ?? body?.input_language ?? '';
@@ -830,6 +853,24 @@ async function fetchTranscripts() {
       body?.translated_lang ??
       body?.output_language ??
       '';
+
+    // Parse srt_edited - it may be JSON with both SRTs or legacy plain SRT
+    let editedInputSrt = '';
+    let editedOutputSrt = '';
+    let editedVariant = '';
+    
+    if (editedSrtRaw) {
+      try {
+        const editedData = JSON.parse(editedSrtRaw);
+        editedInputSrt = editedData.input || '';
+        editedOutputSrt = editedData.output || '';
+        editedVariant = editedData.variant || '';
+      } catch (e) {
+        // Legacy format: plain SRT string (assume it's the base variant)
+        editedInputSrt = editedSrtRaw;
+        editedOutputSrt = '';
+      }
+    }
 
     srtInput.value = inputSrtValue;
     inputLang.value = inputLanguage;
@@ -842,10 +883,6 @@ async function fetchTranscripts() {
 
     const parsedOutput = outputSrtValue ? assignIndexes(parseSrt(outputSrtValue)) : [];
     const parsedInput = inputSrtValue ? assignIndexes(parseSrt(inputSrtValue)) : [];
-    const outputSrtForEditing = editedSrtValue || outputSrtValue;
-    const parsedOutputForEditing = outputSrtForEditing
-      ? assignIndexes(parseSrt(outputSrtForEditing))
-      : [];
 
     if (!parsedOutput.length && !parsedInput.length) {
       error.value = 'Transcript not available for this video.';
@@ -860,24 +897,30 @@ async function fetchTranscripts() {
     const baseVariant = isActuallyTranslated && parsedInput.length ? 'input' : 'output';
     editBaseVariant.value = baseVariant;
     
-    // Determine base and overlay entries for editing
-    // Base = the language being edited (possibly with saved edits)
-    // Overlay = the translation language (always original for correct pairing)
+    // If we have edited SRTs saved, use them directly
+    // This preserves merged entries with their translations
     let baseEntries;
     let overlayEntries;
     
-    if (baseVariant === 'input') {
-      // Editing input (e.g., French): base is input, overlay is output (English translation)
-      // If srt_edited exists, it contains edited input - parse it for the base
-      baseEntries = editedSrtValue 
-        ? assignIndexes(parseSrt(editedSrtValue))
-        : parsedInput;
-      // Overlay is ALWAYS the original output (translation) - never use edited here
-      overlayEntries = parsedOutput;
+    if (editedInputSrt && editedOutputSrt) {
+      // New format: both SRTs saved - use them directly
+      const parsedEditedInput = assignIndexes(parseSrt(editedInputSrt));
+      const parsedEditedOutput = assignIndexes(parseSrt(editedOutputSrt));
+      baseEntries = baseVariant === 'input' ? parsedEditedInput : parsedEditedOutput;
+      overlayEntries = baseVariant === 'input' ? parsedEditedOutput : parsedEditedInput;
+    } else if (editedInputSrt) {
+      // Legacy format: only one SRT saved
+      if (baseVariant === 'input') {
+        baseEntries = assignIndexes(parseSrt(editedInputSrt));
+        overlayEntries = parsedOutput;
+      } else {
+        baseEntries = assignIndexes(parseSrt(editedInputSrt));
+        overlayEntries = parsedInput;
+      }
     } else {
-      // Editing output (e.g., English): base is output, overlay is input
-      baseEntries = parsedOutputForEditing.length ? parsedOutputForEditing : parsedInput;
-      overlayEntries = parsedInput;
+      // No edits saved - use originals
+      baseEntries = baseVariant === 'input' ? parsedInput : parsedOutput;
+      overlayEntries = baseVariant === 'input' ? parsedOutput : parsedInput;
     }
     const baselineBaseEntries =
       baseVariant === 'input'
