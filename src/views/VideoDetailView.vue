@@ -94,37 +94,92 @@
           >
             <!-- Entry Card -->
             <div class="entry-card">
-              <!-- Floating action buttons -->
+              <!-- Floating action buttons (top right) -->
               <div class="entry-floating-actions">
                 <button type="button" class="float-btn add-btn" @click.stop="cloneEntry(index)" title="Add/Clone">+</button>
                 <button type="button" class="float-btn delete-btn" @click.stop="deleteEntry(index)" title="Delete">×</button>
               </div>
 
-              <!-- Time controls row 1: Start time -->
+              <!-- Time controls row 1: Start time - tap to play from this time -->
               <div class="time-row">
-                <button type="button" class="time-adjust" @click.stop="adjustTime(index, 'start', -100)">−</button>
-                <span class="time-value">{{ entry.start }}</span>
-                <button type="button" class="time-adjust" @click.stop="adjustTime(index, 'start', 100)">+</button>
+                <button 
+                  type="button" 
+                  class="time-adjust" 
+                  @click.stop="adjustTime(index, 'start', -100)"
+                  @dblclick.stop.prevent="adjustTime(index, 'start', -100)"
+                >−</button>
+                <span 
+                  class="time-value" 
+                  :class="{ 'editing': editingTimeIndex === index && editingTimeField === 'start' }"
+                  @click.stop="playFromTime(entry.start)"
+                  @dblclick.stop.prevent="startTimeEdit(index, 'start', entry.start)"
+                >
+                  <input 
+                    v-if="editingTimeIndex === index && editingTimeField === 'start'"
+                    v-model="editingTimeValue"
+                    type="text"
+                    inputmode="numeric"
+                    pattern="[0-9:,]*"
+                    class="time-input"
+                    @blur="saveTimeEdit(index, 'start')"
+                    @keyup.enter="saveTimeEdit(index, 'start')"
+                    ref="timeInputRef"
+                  />
+                  <template v-else>{{ entry.start }}</template>
+                </span>
+                <button 
+                  type="button" 
+                  class="time-adjust" 
+                  @click.stop="adjustTime(index, 'start', 100)"
+                  @dblclick.stop.prevent="adjustTime(index, 'start', 100)"
+                >+</button>
                 <button type="button" class="merge-btn" @click.stop="mergeWithPrevious(index)" :disabled="index === 0">↑ Merge</button>
                 <button type="button" class="merge-btn" @click.stop="mergeWithNext(index)" :disabled="index === editableEntries.length - 1">↓ Merge</button>
               </div>
 
-              <!-- Time controls row 2: End time -->
+              <!-- Time controls row 2: End time - tap to play from 2.5s before -->
               <div class="time-row">
-                <button type="button" class="time-adjust" @click.stop="adjustTime(index, 'end', -100)">−</button>
-                <span class="time-value">{{ entry.end }}</span>
-                <button type="button" class="time-adjust" @click.stop="adjustTime(index, 'end', 100)">+</button>
+                <button 
+                  type="button" 
+                  class="time-adjust" 
+                  @click.stop="adjustTime(index, 'end', -100)"
+                  @dblclick.stop.prevent="adjustTime(index, 'end', -100)"
+                >−</button>
+                <span 
+                  class="time-value"
+                  :class="{ 'editing': editingTimeIndex === index && editingTimeField === 'end' }"
+                  @click.stop="playFromTimeBefore(entry.end, 2500)"
+                  @dblclick.stop.prevent="startTimeEdit(index, 'end', entry.end)"
+                >
+                  <input 
+                    v-if="editingTimeIndex === index && editingTimeField === 'end'"
+                    v-model="editingTimeValue"
+                    type="text"
+                    inputmode="numeric"
+                    pattern="[0-9:,]*"
+                    class="time-input"
+                    @blur="saveTimeEdit(index, 'end')"
+                    @keyup.enter="saveTimeEdit(index, 'end')"
+                  />
+                  <template v-else>{{ entry.end }}</template>
+                </span>
+                <button 
+                  type="button" 
+                  class="time-adjust" 
+                  @click.stop="adjustTime(index, 'end', 100)"
+                  @dblclick.stop.prevent="adjustTime(index, 'end', 100)"
+                >+</button>
                 <button type="button" class="action-btn edit-btn" @click.stop="startEntryEdit(entry, index)" :disabled="editingIndex !== null && editingIndex !== index">Edit</button>
                 <button type="button" class="action-btn regen-btn" @click.stop="regenEntry(index)" :disabled="entry.isRegenerating">{{ entry.isRegenerating ? 'Regen...' : 'Regen' }}</button>
               </div>
 
-              <!-- Editor panel (when editing) -->
+              <!-- Editor panel (when editing full entry) -->
               <div v-if="editingIndex === index" class="entry-editor">
                 <div class="editor-times">
                   <label class="editor-label time">Start</label>
-                  <input v-model="draftStart" class="editor-input" type="text" />
+                  <input v-model="draftStart" class="editor-input" type="text" inputmode="numeric" />
                   <label class="editor-label time">End</label>
-                  <input v-model="draftEnd" class="editor-input" type="text" />
+                  <input v-model="draftEnd" class="editor-input" type="text" inputmode="numeric" />
                 </div>
                 <template v-if="isTranslated">
                   <label class="editor-label input">Input</label>
@@ -241,6 +296,9 @@ const playbackSpeed = ref('1');
 const showTips = ref(false);
 const newSubfolderName = ref('');
 const creatingSubfolder = ref(false);
+const editingTimeIndex = ref(null);
+const editingTimeField = ref(null);
+const editingTimeValue = ref('');
 const showTabLabel = 'Show transcripts';
 let videoSegmentEndSeconds = null;
 let videoTimeUpdateHandler = null;
@@ -870,6 +928,36 @@ function playFromTime(timeStr) {
   const ms = parseTimeToMs(timeStr);
   videoRef.value.currentTime = ms / 1000;
   videoRef.value.play();
+}
+
+function playFromTimeBefore(timeStr, beforeMs) {
+  if (!videoRef.value) return;
+  const ms = parseTimeToMs(timeStr);
+  const targetMs = Math.max(0, ms - beforeMs);
+  videoRef.value.currentTime = targetMs / 1000;
+  videoRef.value.play();
+}
+
+function startTimeEdit(index, field, currentValue) {
+  editingTimeIndex.value = index;
+  editingTimeField.value = field;
+  editingTimeValue.value = currentValue;
+  // Focus the input on next tick
+  setTimeout(() => {
+    const input = document.querySelector('.time-input');
+    if (input) input.focus();
+  }, 50);
+}
+
+function saveTimeEdit(index, field) {
+  if (editingTimeIndex.value !== index || editingTimeField.value !== field) return;
+  const entry = editableEntries.value[index];
+  if (entry && editingTimeValue.value) {
+    entry[field] = editingTimeValue.value;
+  }
+  editingTimeIndex.value = null;
+  editingTimeField.value = null;
+  editingTimeValue.value = '';
 }
 
 function deleteEntry(index) {
@@ -1664,6 +1752,44 @@ h2 {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 480px) {
+  .time-row {
+    gap: 4px;
+  }
+  
+  .time-adjust {
+    width: 32px;
+    height: 32px;
+    font-size: 1.2rem;
+  }
+  
+  .merge-btn {
+    padding: 4px 8px;
+    font-size: 0.75rem;
+  }
+  
+  .action-btn {
+    padding: 4px 8px;
+    font-size: 0.75rem;
+  }
+  
+  .entry-card {
+    padding: 12px;
+  }
+  
+  .entry-floating-actions {
+    top: 6px;
+    right: 6px;
+  }
+  
+  .float-btn {
+    width: 26px;
+    height: 26px;
+    font-size: 1.1rem;
+  }
 }
 
 .time-adjust {
@@ -1679,6 +1805,9 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: center;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
 }
 
 .time-adjust:hover {
@@ -1691,6 +1820,24 @@ h2 {
   font-size: 0.9rem;
   color: #5a5c69;
   min-width: 100px;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.time-value.editing {
+  min-width: 100px;
+}
+
+.time-input {
+  width: 100%;
+  max-width: 110px;
+  padding: 4px 6px;
+  border: 2px solid #4e73df;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9rem;
+  text-align: center;
 }
 
 .time-play {
@@ -1771,6 +1918,8 @@ h2 {
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .merge-btn:hover:not(:disabled) {
