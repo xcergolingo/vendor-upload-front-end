@@ -145,12 +145,12 @@
                 ></video>
                 <div class="video-controls">
                   <div class="timestamp-control">
-                    <button type="button" class="time-btn" @click="adjustFolderSplitTime(folder.path, split, fSplitIndex, -0.1)">−</button>
+                    <button type="button" class="time-btn" @click="adjustFolderSplitTime(folder.path, split, fSplitIndex, -0.1)" @dblclick.prevent="adjustFolderSplitTime(folder.path, split, fSplitIndex, -0.3)">−</button>
                     <span 
                       class="time-display clickable" 
                       @click="playFolderSplitAtTimestamp(folder.path, split, fSplitIndex)"
                     >{{ formatTime(split.currentTime || 0) }}</span>
-                    <button type="button" class="time-btn" @click="adjustFolderSplitTime(folder.path, split, fSplitIndex, 0.1)">+</button>
+                    <button type="button" class="time-btn" @click="adjustFolderSplitTime(folder.path, split, fSplitIndex, 0.1)" @dblclick.prevent="adjustFolderSplitTime(folder.path, split, fSplitIndex, 0.3)">+</button>
                   </div>
                   <div class="position-buttons">
                     <button type="button" class="pos-btn" @click="playFolderSplitAt(folder.path, split, fSplitIndex, 'beginning')">Beginning</button>
@@ -210,12 +210,12 @@
           ></video>
           <div class="video-controls">
             <div class="timestamp-control">
-              <button type="button" class="time-btn" @click="adjustSplitTime(split, splitIndex, -0.1)">−</button>
+              <button type="button" class="time-btn" @click="adjustSplitTime(split, splitIndex, -0.1)" @dblclick.prevent="adjustSplitTime(split, splitIndex, -0.3)">−</button>
               <span 
                 class="time-display clickable" 
                 @click="playSplitAtTimestamp(split, splitIndex)"
               >{{ formatTime(split.currentTime || 0) }}</span>
-              <button type="button" class="time-btn" @click="adjustSplitTime(split, splitIndex, 0.1)">+</button>
+              <button type="button" class="time-btn" @click="adjustSplitTime(split, splitIndex, 0.1)" @dblclick.prevent="adjustSplitTime(split, splitIndex, 0.3)">+</button>
             </div>
             <div class="position-buttons">
               <button type="button" class="pos-btn" @click="playSplitAt(split, splitIndex, 'beginning')">Beginning</button>
@@ -425,6 +425,7 @@ function playSplitAt(split, index, position) {
   else if (position === 'end') time = Math.max(0, duration - 2.5);
   video.currentTime = time;
   split.currentTime = time;
+  video.play();
 }
 
 function adjustSplitTime(split, index, delta) {
@@ -472,6 +473,7 @@ function playFolderSplitAt(folderPath, split, index, position) {
   else if (position === 'end') time = Math.max(0, duration - 2.5);
   video.currentTime = time;
   split.currentTime = time;
+  video.play();
 }
 
 function adjustFolderSplitTime(folderPath, split, index, delta) {
@@ -492,7 +494,7 @@ function playFolderSplitAtTimestamp(folderPath, split, index) {
   video.play();
 }
 
-// Set timestamp to 2.5 seconds before end (or 0 if negative)
+// Set timestamp to 2.5 seconds before end (or 0 if negative) and play
 function playSplitAtEnd(split, index) {
   const video = splitVideoRefs.value[index];
   if (!video) return;
@@ -500,6 +502,7 @@ function playSplitAtEnd(split, index) {
   const time = Math.max(0, duration - 2.5);
   video.currentTime = time;
   split.currentTime = time;
+  video.play();
 }
 
 function playFolderSplitAtEnd(folderPath, split, index) {
@@ -509,6 +512,7 @@ function playFolderSplitAtEnd(folderPath, split, index) {
   const time = Math.max(0, duration - 2.5);
   video.currentTime = time;
   split.currentTime = time;
+  video.play();
 }
 
 // Play from timestamp and loop
@@ -1719,6 +1723,8 @@ video {
   display: flex;
   align-items: center;
   justify-content: center;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .time-btn:hover {

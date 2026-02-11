@@ -25,10 +25,21 @@ function handleLogout() {
 }
 </script>
 
+<style>
+/* Global styles to prevent horizontal scroll */
+html, body {
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100vw;
+  touch-action: pan-y;
+}
+</style>
+
 <style scoped>
 .app {
   min-height: 100vh;
   background-color: #f8f9fa;
+  overflow-x: hidden;
 }
 
 .loading {
