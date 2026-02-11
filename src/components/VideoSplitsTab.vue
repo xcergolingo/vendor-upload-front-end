@@ -74,15 +74,43 @@
             </div>
             <ul v-if="folder.splits.length && isFolderExpanded(folder.path)" class="folder-videos">
               <li
-                v-for="split in folder.splits"
+                v-for="(split, fSplitIndex) in folder.splits"
                 :key="`folder-${folder.path}-${getSplitId(split)}`"
                 class="folder-video-card"
               >
-                <div class="sentence">{{ split.sent }}</div>
-                <div v-if="shouldShowTranslation(split)" class="sentence translation">
+                <div 
+                  class="sentence"
+                  @click="playFolderSplitFromBeginning(folder.path, split, fSplitIndex)"
+                  @dblclick="playFolderSplitFromMiddle(folder.path, split, fSplitIndex)"
+                >{{ split.sent }}</div>
+                <div 
+                  v-if="shouldShowTranslation(split)" 
+                  class="sentence translation"
+                  @click="playFolderSplitFromBeginning(folder.path, split, fSplitIndex)"
+                  @dblclick="playFolderSplitFromMiddle(folder.path, split, fSplitIndex)"
+                >
                   {{ translationText(split) }}
                 </div>
-                <video controls playsinline webkit-playsinline preload="metadata" :src="split.video_url"></video>
+                <video 
+                  :ref="el => { if (el) folderVideoRefs[`${folder.path}-${fSplitIndex}`] = el }"
+                  controls 
+                  playsinline 
+                  webkit-playsinline 
+                  preload="metadata" 
+                  :src="split.video_url"
+                ></video>
+                <div class="video-controls">
+                  <div class="timestamp-control">
+                    <button type="button" class="time-btn" @click="adjustFolderSplitTime(folder.path, split, fSplitIndex, -0.5)">−</button>
+                    <span class="time-display">{{ formatTime(split.currentTime || 0) }}</span>
+                    <button type="button" class="time-btn" @click="adjustFolderSplitTime(folder.path, split, fSplitIndex, 0.5)">+</button>
+                  </div>
+                  <div class="position-buttons">
+                    <button type="button" class="pos-btn" @click="playFolderSplitAt(folder.path, split, fSplitIndex, 'beginning')">Beginning</button>
+                    <button type="button" class="pos-btn" @click="playFolderSplitAt(folder.path, split, fSplitIndex, 'middle')">Middle</button>
+                    <button type="button" class="pos-btn" @click="playFolderSplitAt(folder.path, split, fSplitIndex, 'end')">End</button>
+                  </div>
+                </div>
                 <p v-if="split.video_url" class="video-url">
                   <a :href="split.video_url" target="_blank" rel="noopener noreferrer">
                     {{ split.video_url }}
@@ -94,12 +122,40 @@
         </ul>
       </div>
       <ul class="split-list">
-        <li v-for="split in splits" :key="getSplitId(split)" class="split-card">
-          <div class="sentence">{{ split.sent }}</div>
-          <div v-if="shouldShowTranslation(split)" class="sentence translation">
+        <li v-for="(split, splitIndex) in splits" :key="getSplitId(split)" class="split-card">
+          <div 
+            class="sentence" 
+            @click="playSplitFromBeginning(split, splitIndex)"
+            @dblclick="playSplitFromMiddle(split, splitIndex)"
+          >{{ split.sent }}</div>
+          <div 
+            v-if="shouldShowTranslation(split)" 
+            class="sentence translation"
+            @click="playSplitFromBeginning(split, splitIndex)"
+            @dblclick="playSplitFromMiddle(split, splitIndex)"
+          >
             {{ translationText(split) }}
           </div>
-          <video controls playsinline webkit-playsinline preload="metadata" :src="split.video_url"></video>
+          <video 
+            :ref="el => { if (el) splitVideoRefs[splitIndex] = el }"
+            controls 
+            playsinline 
+            webkit-playsinline 
+            preload="metadata" 
+            :src="split.video_url"
+          ></video>
+          <div class="video-controls">
+            <div class="timestamp-control">
+              <button type="button" class="time-btn" @click="adjustSplitTime(split, splitIndex, -0.5)">−</button>
+              <span class="time-display">{{ formatTime(split.currentTime || 0) }}</span>
+              <button type="button" class="time-btn" @click="adjustSplitTime(split, splitIndex, 0.5)">+</button>
+            </div>
+            <div class="position-buttons">
+              <button type="button" class="pos-btn" @click="playSplitAt(split, splitIndex, 'beginning')">Beginning</button>
+              <button type="button" class="pos-btn" @click="playSplitAt(split, splitIndex, 'middle')">Middle</button>
+              <button type="button" class="pos-btn" @click="playSplitAt(split, splitIndex, 'end')">End</button>
+            </div>
+          </div>
           <p v-if="split.video_url" class="video-url">
             <a :href="split.video_url" target="_blank" rel="noopener noreferrer">
               {{ split.video_url }}
@@ -243,6 +299,91 @@ const folderError = ref('');
 const folderLoading = ref(false);
 const folderSaving = ref(false);
 const expandedFolders = ref(new Set());
+const splitVideoRefs = ref({});
+const folderVideoRefs = ref({});
+
+function formatTime(seconds) {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  const ms = Math.floor((seconds % 1) * 10);
+  return `${mins}:${String(secs).padStart(2, '0')}.${ms}`;
+}
+
+function getVideoDuration(videoEl) {
+  return videoEl && videoEl.duration ? videoEl.duration : 0;
+}
+
+function playSplitFromBeginning(split, index) {
+  const video = splitVideoRefs.value[index];
+  if (video) {
+    video.currentTime = 0;
+    video.play();
+  }
+}
+
+function playSplitFromMiddle(split, index) {
+  const video = splitVideoRefs.value[index];
+  if (video && video.duration) {
+    video.currentTime = video.duration / 2;
+    video.play();
+  }
+}
+
+function playSplitAt(split, index, position) {
+  const video = splitVideoRefs.value[index];
+  if (!video) return;
+  const duration = video.duration || 0;
+  let time = 0;
+  if (position === 'beginning') time = 0;
+  else if (position === 'middle') time = duration / 2;
+  else if (position === 'end') time = Math.max(0, duration - 0.5);
+  video.currentTime = time;
+  video.play();
+}
+
+function adjustSplitTime(split, index, delta) {
+  const video = splitVideoRefs.value[index];
+  if (!video) return;
+  const newTime = Math.max(0, Math.min(video.duration || 0, (video.currentTime || 0) + delta));
+  video.currentTime = newTime;
+  split.currentTime = newTime;
+}
+
+function playFolderSplitFromBeginning(folderPath, split, index) {
+  const video = folderVideoRefs.value[`${folderPath}-${index}`];
+  if (video) {
+    video.currentTime = 0;
+    video.play();
+  }
+}
+
+function playFolderSplitFromMiddle(folderPath, split, index) {
+  const video = folderVideoRefs.value[`${folderPath}-${index}`];
+  if (video && video.duration) {
+    video.currentTime = video.duration / 2;
+    video.play();
+  }
+}
+
+function playFolderSplitAt(folderPath, split, index, position) {
+  const video = folderVideoRefs.value[`${folderPath}-${index}`];
+  if (!video) return;
+  const duration = video.duration || 0;
+  let time = 0;
+  if (position === 'beginning') time = 0;
+  else if (position === 'middle') time = duration / 2;
+  else if (position === 'end') time = Math.max(0, duration - 0.5);
+  video.currentTime = time;
+  video.play();
+}
+
+function adjustFolderSplitTime(folderPath, split, index, delta) {
+  const video = folderVideoRefs.value[`${folderPath}-${index}`];
+  if (!video) return;
+  const newTime = Math.max(0, Math.min(video.duration || 0, (video.currentTime || 0) + delta));
+  video.currentTime = newTime;
+  split.currentTime = newTime;
+}
 
 function normalizeLanguageCode(value) {
   return String(value || '').trim().toLowerCase();
@@ -1224,6 +1365,93 @@ video {
 
   .folder-form button {
     width: 100%;
+  }
+}
+
+.video-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px;
+  background: #f8f9fc;
+  border-radius: 8px;
+}
+
+.timestamp-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.time-btn {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d1d3e2;
+  border-radius: 6px;
+  background: white;
+  color: #4e73df;
+  font-size: 1.2rem;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.time-btn:hover {
+  background: #4e73df;
+  color: white;
+}
+
+.time-display {
+  font-family: monospace;
+  font-size: 1rem;
+  color: #5a5c69;
+  min-width: 60px;
+  text-align: center;
+}
+
+.position-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pos-btn {
+  padding: 6px 12px;
+  border: 1px solid #4e73df;
+  border-radius: 6px;
+  background: white;
+  color: #4e73df;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pos-btn:hover {
+  background: #4e73df;
+  color: white;
+}
+
+.sentence {
+  cursor: pointer;
+  user-select: none;
+}
+
+.sentence:hover {
+  opacity: 0.8;
+}
+
+@media (max-width: 480px) {
+  .position-buttons {
+    justify-content: center;
+  }
+  
+  .pos-btn {
+    flex: 1;
+    min-width: 80px;
+    text-align: center;
   }
 }
 </style>
