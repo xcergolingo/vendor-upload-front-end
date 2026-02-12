@@ -1764,7 +1764,8 @@ video {
 
 .sentence {
   cursor: pointer;
-  user-select: none;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .sentence:hover {
