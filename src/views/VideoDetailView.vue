@@ -111,8 +111,7 @@
                 <span 
                   class="time-value" 
                   :class="{ 'editing': editingTimeIndex === index && editingTimeField === 'start' }"
-                  @click.stop="playFromStartTime(entry.start, index)"
-                  @dblclick.stop.prevent="startTimeEdit(index, 'start', entry.start)"
+                  @click.stop="handleStartTimeTap(index, entry.start)"
                 >
                   <input 
                     v-if="editingTimeIndex === index && editingTimeField === 'start'"
@@ -161,8 +160,7 @@
                 <span 
                   class="time-value"
                   :class="{ 'editing': editingTimeIndex === index && editingTimeField === 'end' }"
-                  @click.stop="playFromEndTimeBefore(entry.end, 2500)"
-                  @dblclick.stop.prevent="startTimeEdit(index, 'end', entry.end)"
+                  @click.stop="handleEndTimeTap(index, entry.end)"
                 >
                   <input 
                     v-if="editingTimeIndex === index && editingTimeField === 'end'"
@@ -346,6 +344,45 @@ const editingTimeIndex = ref(null);
 const editingTimeField = ref(null);
 const editingTimeValue = ref('');
 const showTabLabel = 'Show transcripts';
+
+// Tap detection for single vs double tap
+let tapTimeout = null;
+let lastTapTime = 0;
+const TAP_DELAY = 250; // ms to wait for double tap
+
+function handleStartTimeTap(index, startTime) {
+  const now = Date.now();
+  if (now - lastTapTime < TAP_DELAY) {
+    // Double tap - edit
+    clearTimeout(tapTimeout);
+    lastTapTime = 0;
+    startTimeEdit(index, 'start', startTime);
+  } else {
+    // Potential single tap - wait to see if double tap comes
+    lastTapTime = now;
+    tapTimeout = setTimeout(() => {
+      lastTapTime = 0;
+      playFromStartTime(startTime, index);
+    }, TAP_DELAY);
+  }
+}
+
+function handleEndTimeTap(index, endTime) {
+  const now = Date.now();
+  if (now - lastTapTime < TAP_DELAY) {
+    // Double tap - edit
+    clearTimeout(tapTimeout);
+    lastTapTime = 0;
+    startTimeEdit(index, 'end', endTime);
+  } else {
+    // Potential single tap - wait to see if double tap comes
+    lastTapTime = now;
+    tapTimeout = setTimeout(() => {
+      lastTapTime = 0;
+      playFromEndTimeBefore(endTime, 2500);
+    }, TAP_DELAY);
+  }
+}
 let videoSegmentEndSeconds = null;
 let videoTimeUpdateHandler = null;
 let lastDragStartAt = 0;
