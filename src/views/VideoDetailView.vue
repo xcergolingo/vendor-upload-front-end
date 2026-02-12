@@ -111,8 +111,8 @@
                 <span 
                   class="time-value" 
                   :class="{ 'editing': editingTimeIndex === index && editingTimeField === 'start' }"
-                  @click.stop="startTimeEdit(index, 'start', entry.start)"
-                  @dblclick.stop.prevent="quickAdjustTime(index, 'start', 500)"
+                  @click.stop="playFromStartTime(entry.start, index)"
+                  @dblclick.stop.prevent="startTimeEdit(index, 'start', entry.start)"
                 >
                   <input 
                     v-if="editingTimeIndex === index && editingTimeField === 'start'"
@@ -161,8 +161,8 @@
                 <span 
                   class="time-value"
                   :class="{ 'editing': editingTimeIndex === index && editingTimeField === 'end' }"
-                  @click.stop="startTimeEdit(index, 'end', entry.end)"
-                  @dblclick.stop.prevent="quickAdjustTime(index, 'end', 500)"
+                  @click.stop="playFromEndTimeBefore(entry.end, 2500)"
+                  @dblclick.stop.prevent="startTimeEdit(index, 'end', entry.end)"
                 >
                   <input 
                     v-if="editingTimeIndex === index && editingTimeField === 'end'"
