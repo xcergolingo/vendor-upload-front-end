@@ -40,7 +40,9 @@
           <li><strong>Tap timestamp</strong> to edit directly (numeric keyboard)</li>
           <li><strong>Double-tap timestamp</strong> to add 0.5 seconds</li>
           <li><strong>Long-press text</strong> to select and copy</li>
-          <li><strong>Tap text</strong> to play clip</li>
+          <li><strong>Tap text</strong> to play clip once</li>
+          <li><strong>Double-tap text</strong> to loop clip (tap again to stop)</li>
+          <li><strong>Reset transcripts</strong> will ask for confirmation before resetting</li>
         </ul>
       </div>
     </section>
@@ -251,7 +253,7 @@
               <!-- Text content - tap to play (if no text selected), double-tap to play from middle -->
               <div v-else class="entry-content" 
                 @click.stop="handleEntryContentClick($event, entry)"
-                @dblclick.stop.prevent="playEntryFromMiddle(entry)"
+                @dblclick.stop.prevent="toggleLoopEntry(entry)"
               >
                 <p v-if="isTranslated" class="text-line input selectable-text">{{ entry.inputText || '' }}</p>
                 <p v-if="isTranslated" class="text-line output selectable-text">{{ entry.outputText || '' }}</p>
@@ -364,6 +366,8 @@ const newSubfolderName = ref('');
 const creatingSubfolder = ref(false);
 const deletingFolder = ref(false);
 const globalOffsetMs = ref(0);
+const loopingEntryId = ref(null);
+let loopTimeUpdateHandler = null;
 const editingTimeIndex = ref(null);
 const editingTimeField = ref(null);
 const editingTimeValue = ref('');
@@ -1219,6 +1223,18 @@ function handleEntryContentClick(event, entry) {
     // Text is selected, don't play
     return;
   }
+  
+  // If this entry is currently looping, stop the loop
+  const entryId = `${entry.start}-${entry.end}`;
+  if (loopingEntryId.value === entryId) {
+    const video = videoRef.value;
+    if (video) video.pause();
+    stopLooping();
+    return;
+  }
+  
+  // Stop any other loop and play this entry once
+  stopLooping();
   playEntryFull(entry);
 }
 
@@ -1240,23 +1256,57 @@ function playEntryFull(entry) {
   videoRef.value.addEventListener('timeupdate', checkStop);
 }
 
-// Play from middle to end (stop at end timestamp)
-function playEntryFromMiddle(entry) {
-  if (!videoRef.value) return;
+// Stop looping playback
+function stopLooping() {
+  const video = videoRef.value;
+  if (video && loopTimeUpdateHandler) {
+    video.removeEventListener('timeupdate', loopTimeUpdateHandler);
+  }
+  loopTimeUpdateHandler = null;
+  loopingEntryId.value = null;
+}
+
+// Toggle loop playback for an entry (double-tap to start, tap to stop)
+function toggleLoopEntry(entry) {
+  const video = videoRef.value;
+  if (!video) return;
+  
+  const entryId = `${entry.start}-${entry.end}`;
+  
+  // If already looping this entry, stop it
+  if (loopingEntryId.value === entryId) {
+    video.pause();
+    stopLooping();
+    return;
+  }
+  
+  // Stop any existing loop
+  stopLooping();
+  
   const startMs = parseTimeToMs(entry.start);
   const endMs = parseTimeToMs(entry.end);
-  const middleMs = (startMs + endMs) / 2;
-  videoRef.value.currentTime = middleMs / 1000;
-  videoRef.value.play();
+  const startSeconds = startMs / 1000;
+  const endSeconds = endMs / 1000;
   
-  // Set up listener to stop at end time
-  const checkStop = () => {
-    if (videoRef.value && videoRef.value.currentTime >= endMs / 1000) {
-      videoRef.value.pause();
-      videoRef.value.removeEventListener('timeupdate', checkStop);
+  // Start looping
+  loopingEntryId.value = entryId;
+  video.currentTime = startSeconds;
+  video.play();
+  
+  // Set up listener to loop at end time
+  loopTimeUpdateHandler = () => {
+    if (loopingEntryId.value !== entryId) {
+      // Loop was stopped
+      video.removeEventListener('timeupdate', loopTimeUpdateHandler);
+      loopTimeUpdateHandler = null;
+      return;
+    }
+    if (video.currentTime >= endSeconds) {
+      video.currentTime = startSeconds;
+      video.play();
     }
   };
-  videoRef.value.addEventListener('timeupdate', checkStop);
+  video.addEventListener('timeupdate', loopTimeUpdateHandler);
 }
 
 // Copy end time from previous clip to this clip's start
@@ -1745,6 +1795,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   clearDragState();
   stopSegmentPlayback();
+  stopLooping();
   if (uploadTimer) {
     clearTimeout(uploadTimer);
   }
