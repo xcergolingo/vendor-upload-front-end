@@ -47,6 +47,8 @@ function goHome() {
   padding: 10px 24px;
   background-color: #343a40;
   color: #ffffff;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .brand {
@@ -61,15 +63,22 @@ function goHome() {
   margin-right: 12px;
 }
 
+.brand span {
+  display: none;
+}
+
 .links {
   display: flex;
-  gap: 20px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .links a {
   color: #ffffff;
   text-decoration: none;
   font-weight: 500;
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 .links a.router-link-active {
@@ -79,12 +88,13 @@ function goHome() {
 .user {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
 }
 
 .email {
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   opacity: 0.8;
+  display: none;
 }
 
 button {
@@ -95,5 +105,28 @@ button {
   color: white;
   cursor: pointer;
   font-weight: 600;
+  font-size: 0.85rem;
+}
+
+@media (min-width: 768px) {
+  .main-nav {
+    flex-wrap: nowrap;
+  }
+
+  .brand span {
+    display: inline;
+  }
+
+  .links {
+    gap: 20px;
+  }
+
+  .links a {
+    font-size: 1rem;
+  }
+
+  .email {
+    display: inline;
+  }
 }
 </style>

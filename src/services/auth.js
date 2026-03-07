@@ -24,7 +24,7 @@ function setSession(authResult) {
   const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
   localStorage.setItem('idToken', authResult.idToken);
   localStorage.setItem('expiresAt', JSON.stringify(expiresAt));
-  const email = authResult.idTokenPayload?.email || '';
+  const email = (authResult.idTokenPayload?.email || '').toLowerCase();
   if (email) {
     localStorage.setItem('userEmail', email);
   }
@@ -62,7 +62,7 @@ export function initAuth() {
         const stillValid = expiresAt && Date.now() < Number(expiresAt);
         if (stillValid) {
           internalState.isAuthenticated = true;
-          internalState.userEmail = localStorage.getItem('userEmail') || '';
+          internalState.userEmail = (localStorage.getItem('userEmail') || '').toLowerCase();
         } else {
           clearSession();
         }
