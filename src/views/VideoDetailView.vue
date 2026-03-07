@@ -42,7 +42,6 @@
           <li><strong>Long-press text</strong> to select and copy</li>
           <li><strong>Tap text</strong> to play clip once</li>
           <li><strong>Double-tap text</strong> to loop clip (tap again to stop)</li>
-          <li><strong>Reset transcripts</strong> will ask for confirmation before resetting</li>
         </ul>
       </div>
     </section>
