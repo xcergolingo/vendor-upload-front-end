@@ -79,6 +79,29 @@
           </button>
           <span v-if="editLangLabel" class="lang-hint">Editing: {{ editLangLabel }}</span>
         </div>
+        
+        <!-- Global Offset & Batch Shift Controls -->
+        <div class="timing-controls">
+          <div class="offset-control">
+            <label class="offset-label">Global Offset:</label>
+            <button type="button" class="shift-btn" @click="shiftAllTimestamps(-300)">−0.3s</button>
+            <button type="button" class="shift-btn" @click="shiftAllTimestamps(-100)">−0.1s</button>
+            <input 
+              type="range" 
+              v-model.number="globalOffsetMs" 
+              min="-2000" 
+              max="2000" 
+              step="50"
+              class="offset-slider"
+              @change="applyGlobalOffset"
+            />
+            <span class="offset-value">{{ (globalOffsetMs / 1000).toFixed(2) }}s</span>
+            <button type="button" class="shift-btn" @click="shiftAllTimestamps(100)">+0.1s</button>
+            <button type="button" class="shift-btn" @click="shiftAllTimestamps(300)">+0.3s</button>
+            <button type="button" class="apply-offset-btn" @click="applyGlobalOffset" :disabled="globalOffsetMs === 0">Apply</button>
+            <button type="button" class="reset-offset-btn" @click="globalOffsetMs = 0">Reset</button>
+          </div>
+        </div>
         <div class="editable-list">
           <div
             v-for="(entry, index) in editableEntries"
@@ -340,6 +363,7 @@ const showTips = ref(false);
 const newSubfolderName = ref('');
 const creatingSubfolder = ref(false);
 const deletingFolder = ref(false);
+const globalOffsetMs = ref(0);
 const editingTimeIndex = ref(null);
 const editingTimeField = ref(null);
 const editingTimeValue = ref('');
@@ -1071,6 +1095,26 @@ function msToTimeStr(ms) {
   const seconds = totalSeconds % 60;
   const milliseconds = ms % 1000;
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
+}
+
+// Shift ALL timestamps by deltaMs (batch shift)
+function shiftAllTimestamps(deltaMs) {
+  editableEntries.value = editableEntries.value.map(entry => {
+    const newStartMs = Math.max(0, parseTimeToMs(entry.start) + deltaMs);
+    const newEndMs = Math.max(0, parseTimeToMs(entry.end) + deltaMs);
+    return {
+      ...entry,
+      start: msToTimeStr(newStartMs),
+      end: msToTimeStr(newEndMs)
+    };
+  });
+}
+
+// Apply the global offset slider value and reset slider
+function applyGlobalOffset() {
+  if (globalOffsetMs.value === 0) return;
+  shiftAllTimestamps(globalOffsetMs.value);
+  globalOffsetMs.value = 0;
 }
 
 function adjustTime(index, field, deltaMs) {
@@ -2653,5 +2697,117 @@ h2 {
 .create-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Global Offset & Batch Shift Controls */
+.timing-controls {
+  margin: 16px 0;
+  padding: 12px 16px;
+  background: #f8f9fc;
+  border-radius: 8px;
+  border: 1px solid #e3e6f0;
+}
+
+.offset-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.offset-label {
+  font-weight: 600;
+  color: #5a5c69;
+  white-space: nowrap;
+}
+
+.offset-slider {
+  width: 120px;
+  cursor: pointer;
+}
+
+.offset-value {
+  font-family: monospace;
+  font-weight: 600;
+  color: #4e73df;
+  min-width: 60px;
+  text-align: center;
+}
+
+.shift-btn {
+  padding: 6px 12px;
+  border: 1px solid #4e73df;
+  border-radius: 6px;
+  background: white;
+  color: #4e73df;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: all 0.15s ease;
+}
+
+.shift-btn:hover {
+  background: #4e73df;
+  color: white;
+}
+
+.shift-btn:active {
+  transform: scale(0.95);
+}
+
+.apply-offset-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  background: #1cc88a;
+  color: white;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.apply-offset-btn:hover:not(:disabled) {
+  background: #17a673;
+}
+
+.apply-offset-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.reset-offset-btn {
+  padding: 6px 12px;
+  border: 1px solid #858796;
+  border-radius: 6px;
+  background: white;
+  color: #858796;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.reset-offset-btn:hover {
+  background: #858796;
+  color: white;
+}
+
+@media (max-width: 600px) {
+  .offset-control {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  
+  .offset-slider {
+    width: 100%;
+  }
+  
+  .offset-control > button,
+  .offset-control > span {
+    text-align: center;
+  }
 }
 </style>
