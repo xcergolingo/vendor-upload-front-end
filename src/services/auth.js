@@ -125,3 +125,24 @@ export function register(email, password) {
 export function logout() {
   clearSession();
 }
+
+export function resetPassword(email) {
+  internalState.error = '';
+  return new Promise((resolve, reject) => {
+    auth0Client.changePassword(
+      {
+        connection: 'Username-Password-Authentication',
+        email
+      },
+      (err, resp) => {
+        if (err) {
+          internalState.error =
+            err.description || err.message || 'Password reset failed';
+          reject(err);
+          return;
+        }
+        resolve(resp);
+      }
+    );
+  });
+}

@@ -1,15 +1,47 @@
 <template>
   <form class="upload-form" @submit.prevent="handleSubmit">
     <h2>Upload Video</h2>
-    <label>
+    
+    <!-- Upload mode toggle -->
+    <div class="upload-mode-toggle">
+      <button 
+        type="button" 
+        :class="{ active: uploadMode === 'file' }"
+        @click="uploadMode = 'file'"
+      >
+        📁 Upload File
+      </button>
+      <button 
+        type="button" 
+        :class="{ active: uploadMode === 'youtube' }"
+        @click="uploadMode = 'youtube'"
+      >
+        🎬 YouTube URL
+      </button>
+    </div>
+
+    <!-- File upload mode -->
+    <label v-if="uploadMode === 'file'">
       Choose File
-<input
+      <input
         ref="fileInput"
         type="file"
         accept=".mp4,.mov,video/*"
         @change="onFileChange"
-        required
+        :required="uploadMode === 'file'"
       />
+    </label>
+    
+    <!-- YouTube URL mode -->
+    <label v-if="uploadMode === 'youtube'">
+      YouTube Video URL
+      <input
+        v-model.trim="youtubeUrl"
+        type="url"
+        placeholder="https://www.youtube.com/watch?v=..."
+        :required="uploadMode === 'youtube'"
+      />
+      <span class="hint">Paste a YouTube video link. The video will be downloaded and processed automatically.</span>
     </label>
     <label>
       Choose Input Language
@@ -84,6 +116,8 @@ const languages = [
 
 const fileInput = ref(null);
 const selectedFile = ref(null);
+const uploadMode = ref('file'); // 'file' or 'youtube'
+const youtubeUrl = ref('');
 const language = ref('auto');
 const outputLanguage = ref('auto');
 const indexValue = ref('');
@@ -99,13 +133,93 @@ function onFileChange(event) {
   selectedFile.value = files && files[0] ? files[0] : null;
 }
 
-async function handleSubmit() {
-  if (!selectedFile.value) {
-    error.value = 'Please choose a video file.';
-    return;
+function extractYouTubeId(url) {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
+    /youtube\.com\/shorts\/([^&\n?#]+)/
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
   }
+  return null;
+}
+
+async function handleSubmit() {
   if (!props.userEmail) {
     error.value = 'Missing user email.';
+    return;
+  }
+
+  if (uploadMode.value === 'youtube') {
+    await handleYouTubeSubmit();
+  } else {
+    await handleFileSubmit();
+  }
+}
+
+async function handleYouTubeSubmit() {
+  if (!youtubeUrl.value) {
+    error.value = 'Please enter a YouTube URL.';
+    return;
+  }
+  
+  const videoId = extractYouTubeId(youtubeUrl.value);
+  if (!videoId) {
+    error.value = 'Invalid YouTube URL. Please check the link.';
+    return;
+  }
+
+  uploading.value = true;
+  error.value = '';
+  message.value = '';
+
+  const requestBody = {
+    user_name: props.userEmail,
+    youtube_url: youtubeUrl.value,
+    youtube_id: videoId,
+    lang: language.value,
+    output_lang: outputLanguage.value,
+    theme_title: `YouTube_${videoId}`
+  };
+
+  if (indexValue.value) requestBody.index = indexValue.value;
+  if (tags.value) requestBody.tags = tags.value;
+  if (weblink.value) requestBody.weblink = weblink.value || youtubeUrl.value;
+  if (linkName.value) requestBody.link_name = linkName.value || 'YouTube';
+
+  try {
+    const response = await fetch(
+      'https://igr9sg55zi.execute-api.us-east-1.amazonaws.com/prod/process-youtube',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      }
+    );
+    
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.message || 'Failed to process YouTube video.');
+    }
+    
+    message.value = 'YouTube video submitted for processing! Check back in a few minutes.';
+    youtubeUrl.value = '';
+    indexValue.value = '';
+    tags.value = '';
+    weblink.value = '';
+    linkName.value = '';
+  } catch (err) {
+    console.error(err);
+    error.value = err.message || 'YouTube processing failed. Please try again.';
+  } finally {
+    uploading.value = false;
+  }
+}
+
+async function handleFileSubmit() {
+  if (!selectedFile.value) {
+    error.value = 'Please choose a video file.';
     return;
   }
 
@@ -192,6 +306,42 @@ async function uploadFile(url) {
 h2 {
   margin-top: 0;
   color: #4e73df;
+}
+
+.upload-mode-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.upload-mode-toggle button {
+  flex: 1;
+  padding: 12px 16px;
+  border: 2px solid #d1d3e2;
+  border-radius: 8px;
+  background: #fff;
+  color: #858796;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-mode-toggle button:hover {
+  border-color: #4e73df;
+  color: #4e73df;
+}
+
+.upload-mode-toggle button.active {
+  border-color: #4e73df;
+  background: #4e73df;
+  color: #fff;
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: #858796;
+  margin-top: 4px;
+  font-weight: 400;
 }
 
 label {

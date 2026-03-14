@@ -9,26 +9,42 @@
         {{ loading ? 'Signing in...' : 'Login' }}
       </button>
     </form>
-    <button class="secondary" @click="handleRegister" :disabled="loading">
-      Register
-    </button>
-    <p v-if="message" class="message">{{ message }}</p>
+    <div class="button-row">
+      <button class="secondary" @click="handleRegister" :disabled="loading">
+        Register
+      </button>
+      <button class="tertiary" @click="handleForgotPassword" :disabled="loading">
+        Forgot Password
+      </button>
+    </div>
+    <p v-if="message" class="message" :class="{ success: isSuccess }">{{ message }}</p>
     <p v-if="authState.error" class="error">{{ authState.error }}</p>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue';
-import { authState, login, register } from '../services/auth';
+import { authState, login, register, resetPassword } from '../services/auth';
 
 const email = ref('');
 const password = ref('');
 const message = ref('');
 const loading = ref(false);
+const isSuccess = ref(false);
 
 function validate() {
   if (!email.value || !password.value) {
     message.value = 'Email and password are required.';
+    isSuccess.value = false;
+    return false;
+  }
+  return true;
+}
+
+function validateEmail() {
+  if (!email.value) {
+    message.value = 'Please enter your email address.';
+    isSuccess.value = false;
     return false;
   }
   return true;
@@ -43,6 +59,7 @@ async function handleLogin() {
   } catch (err) {
     console.error(err);
     message.value = 'Login failed. Please check your credentials.';
+    isSuccess.value = false;
   } finally {
     loading.value = false;
   }
@@ -55,9 +72,28 @@ async function handleRegister() {
   try {
     await register(email.value.trim(), password.value);
     message.value = 'Registration successful. Please log in.';
+    isSuccess.value = true;
   } catch (err) {
     console.error(err);
     message.value = 'Registration failed. Please try again.';
+    isSuccess.value = false;
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function handleForgotPassword() {
+  if (!validateEmail()) return;
+  loading.value = true;
+  message.value = '';
+  try {
+    await resetPassword(email.value.trim());
+    message.value = 'Password reset email sent! Check your inbox.';
+    isSuccess.value = true;
+  } catch (err) {
+    console.error(err);
+    message.value = 'Failed to send reset email. Please try again.';
+    isSuccess.value = false;
   } finally {
     loading.value = false;
   }
@@ -102,8 +138,21 @@ button {
   margin-bottom: 10px;
 }
 
+.button-row {
+  display: flex;
+  gap: 10px;
+}
+
+.button-row button {
+  flex: 1;
+}
+
 button.secondary {
   background-color: #1cc88a;
+}
+
+button.tertiary {
+  background-color: #858796;
 }
 
 button:disabled {
@@ -112,8 +161,12 @@ button:disabled {
 }
 
 .message {
-  color: #1cc88a;
+  color: #e74a3b;
   margin-top: 8px;
+}
+
+.message.success {
+  color: #1cc88a;
 }
 
 .error {

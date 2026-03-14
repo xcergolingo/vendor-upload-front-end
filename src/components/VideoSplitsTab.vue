@@ -24,6 +24,32 @@
             Create folders to organize clips. Videos with a folder field appear in the matching folder too.
           </p>
         </div>
+        
+        <!-- Folder filter -->
+        <div class="folder-filter">
+          <label>
+            <span class="filter-label">📂 Filter by folder:</span>
+            <select v-model="selectedFolderFilter">
+              <option value="">All folders</option>
+              <option
+                v-for="option in folderOptions"
+                :key="option.path"
+                :value="option.path"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <button 
+            v-if="selectedFolderFilter" 
+            type="button" 
+            class="clear-filter-btn"
+            @click="selectedFolderFilter = ''"
+          >
+            Clear
+          </button>
+        </div>
+        
         <div class="folder-form">
           <label>
             Folder name
@@ -167,7 +193,7 @@
                   >
                     <option value="">None</option>
                     <option
-                      v-for="opt in folderOptions"
+                      v-for="opt in filteredFolderOptions"
                       :key="opt.path"
                       :value="opt.path"
                     >
@@ -232,7 +258,7 @@
             >
               <option value="">None</option>
               <option
-                v-for="opt in folderOptions"
+                v-for="opt in filteredFolderOptions"
                 :key="opt.path"
                 :value="opt.path"
               >
@@ -773,12 +799,29 @@ const folderNodesFlat = computed(() => {
   return flattenFolderNodes(nodes);
 });
 
+// Selected folder for filtering subfolders
+const selectedFolderFilter = ref('');
+
 const folderOptions = computed(() =>
   folderNodesFlat.value.map(node => ({
     path: node.path,
     label: `${'-- '.repeat(node.depth)}${node.name}`
   }))
 );
+
+// Filtered folder options - only subfolders of selected folder
+const filteredFolderOptions = computed(() => {
+  if (!selectedFolderFilter.value) {
+    return folderOptions.value;
+  }
+  const parentPath = selectedFolderFilter.value;
+  return folderOptions.value.filter(opt => {
+    // Include the parent itself
+    if (opt.path === parentPath) return true;
+    // Include direct children and nested children
+    return opt.path.startsWith(parentPath + '/');
+  });
+});
 
 function addFolder() {
   const name = String(newFolderName.value || '').trim();
@@ -1378,6 +1421,52 @@ watch(
   margin: 4px 0 0;
   color: #6b7280;
   font-size: 0.9rem;
+}
+
+.folder-filter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: #e8f4fd;
+  border-radius: 8px;
+  border: 1px solid #b3d7f5;
+}
+
+.folder-filter label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.folder-filter .filter-label {
+  font-weight: 600;
+  color: #1e40af;
+  white-space: nowrap;
+}
+
+.folder-filter select {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.clear-filter-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  background: #ef4444;
+  color: white;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.clear-filter-btn:hover {
+  background: #dc2626;
 }
 
 .folder-form {
