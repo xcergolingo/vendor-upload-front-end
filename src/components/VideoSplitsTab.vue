@@ -1422,14 +1422,20 @@ watch(
 }
 
 .clear-filter-btn {
-  padding: 4px 8px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   border: none;
   border-radius: 4px;
   background: #ef4444;
   color: white;
-  font-size: 0.75rem;
+  font-size: 12px;
   cursor: pointer;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .clear-filter-btn:hover {
@@ -1474,19 +1480,16 @@ watch(
 
 .parent-folder-row {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   align-items: center;
+  max-width: 100%;
 }
 
 .parent-folder-row select {
   flex: 1;
-}
-
-.parent-folder-row .clear-filter-btn {
-  padding: 4px 8px;
-  font-size: 0.8rem;
-  flex-shrink: 0;
-  min-width: 28px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .folder-tree {
