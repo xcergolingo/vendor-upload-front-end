@@ -25,48 +25,33 @@
           </p>
         </div>
         
-        <!-- Folder filter -->
-        <div class="folder-filter">
-          <label>
-            <span class="filter-label">📂 Filter by folder:</span>
-            <select v-model="selectedFolderFilter">
-              <option value="">All folders</option>
-              <option
-                v-for="option in folderOptions"
-                :key="option.path"
-                :value="option.path"
-              >
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
-          <button 
-            v-if="selectedFolderFilter" 
-            type="button" 
-            class="clear-filter-btn"
-            @click="selectedFolderFilter = ''"
-          >
-            Clear
-          </button>
-        </div>
-        
         <div class="folder-form">
           <label>
             Folder name
             <input v-model.trim="newFolderName" type="text" placeholder="New folder name" />
           </label>
           <label>
-            Parent folder
-            <select v-model="newFolderParent">
-              <option value="">Root</option>
-              <option
-                v-for="option in folderOptions"
-                :key="option.path"
-                :value="option.path"
+            Parent folder <span class="filter-hint">(also filters list below)</span>
+            <div class="parent-folder-row">
+              <select v-model="newFolderParent">
+                <option value="">All (Root)</option>
+                <option
+                  v-for="option in folderOptions"
+                  :key="option.path"
+                  :value="option.path"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+              <button 
+                v-if="newFolderParent" 
+                type="button" 
+                class="clear-filter-btn"
+                @click="newFolderParent = ''"
               >
-                {{ option.label }}
-              </option>
-            </select>
+                ✕
+              </button>
+            </div>
           </label>
           <button class="secondary" type="button" :disabled="folderSaving" @click="addFolder">
             {{ folderSaving ? 'Saving...' : 'Add folder' }}
@@ -74,10 +59,10 @@
         </div>
         <p v-if="folderError" class="error">{{ folderError }}</p>
         <p v-if="folderLoading" class="info">Loading folders...</p>
-        <p v-if="!folderNodesFlat.length" class="info">No folders yet.</p>
+        <p v-if="!filteredFolderNodesFlat.length" class="info">No folders yet.</p>
         <ul v-else class="folder-tree">
           <li
-            v-for="folder in folderNodesFlat"
+            v-for="folder in filteredFolderNodesFlat"
             :key="folder.path"
             class="folder-node"
             :style="{ paddingLeft: `${folder.depth * 18}px` }"
@@ -799,9 +784,6 @@ const folderNodesFlat = computed(() => {
   return flattenFolderNodes(nodes);
 });
 
-// Selected folder for filtering subfolders
-const selectedFolderFilter = ref('');
-
 const folderOptions = computed(() =>
   folderNodesFlat.value.map(node => ({
     path: node.path,
@@ -809,16 +791,28 @@ const folderOptions = computed(() =>
   }))
 );
 
-// Filtered folder options - only subfolders of selected folder
+// Filtered folder nodes - filter based on selected parent folder
+const filteredFolderNodesFlat = computed(() => {
+  if (!newFolderParent.value) {
+    return folderNodesFlat.value;
+  }
+  const parentPath = newFolderParent.value;
+  return folderNodesFlat.value.filter(node => {
+    // Include the parent itself
+    if (node.path === parentPath) return true;
+    // Include subfolders
+    return node.path.startsWith(parentPath + '/');
+  });
+});
+
+// Filtered folder options for "Move to" dropdown
 const filteredFolderOptions = computed(() => {
-  if (!selectedFolderFilter.value) {
+  if (!newFolderParent.value) {
     return folderOptions.value;
   }
-  const parentPath = selectedFolderFilter.value;
+  const parentPath = newFolderParent.value;
   return folderOptions.value.filter(opt => {
-    // Include the parent itself
     if (opt.path === parentPath) return true;
-    // Include direct children and nested children
     return opt.path.startsWith(parentPath + '/');
   });
 });
@@ -1423,38 +1417,6 @@ watch(
   font-size: 0.9rem;
 }
 
-.folder-filter {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-  padding: 10px 12px;
-  background: #e8f4fd;
-  border-radius: 8px;
-  border: 1px solid #b3d7f5;
-}
-
-.folder-filter label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-}
-
-.folder-filter .filter-label {
-  font-weight: 600;
-  color: #1e40af;
-  white-space: nowrap;
-}
-
-.folder-filter select {
-  flex: 1;
-  padding: 6px 10px;
-  border: 1px solid #93c5fd;
-  border-radius: 6px;
-  font-size: 0.9rem;
-}
-
 .clear-filter-btn {
   padding: 6px 12px;
   border: none;
@@ -1497,6 +1459,28 @@ watch(
 
 .folder-form button {
   height: 38px;
+}
+
+.filter-hint {
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.parent-folder-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.parent-folder-row select {
+  flex: 1;
+}
+
+.parent-folder-row .clear-filter-btn {
+  padding: 6px 10px;
+  font-size: 0.9rem;
+  flex-shrink: 0;
 }
 
 .folder-tree {
