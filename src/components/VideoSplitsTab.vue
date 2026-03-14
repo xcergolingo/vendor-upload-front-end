@@ -1421,15 +1421,17 @@ watch(
   font-size: 0.9rem;
 }
 
-.clear-filter-btn {
-  width: 24px;
-  height: 24px;
-  padding: 0;
+.folder-form .clear-filter-btn {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px;
+  max-width: 28px;
+  padding: 0 !important;
   border: none;
   border-radius: 4px;
   background: #ef4444;
   color: white;
-  font-size: 12px;
+  font-size: 14px;
   cursor: pointer;
   line-height: 1;
   display: flex;
@@ -1480,16 +1482,15 @@ watch(
 
 .parent-folder-row {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   align-items: center;
-  max-width: 100%;
+  width: 100%;
 }
 
 .parent-folder-row select {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  width: 100%;
 }
 
 .folder-tree {
