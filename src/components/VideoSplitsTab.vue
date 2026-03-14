@@ -785,10 +785,14 @@ const folderNodesFlat = computed(() => {
 });
 
 const folderOptions = computed(() =>
-  folderNodesFlat.value.map(node => ({
-    path: node.path,
-    label: `${'-- '.repeat(node.depth)}${node.name}`
-  }))
+  folderNodesFlat.value.map(node => {
+    const count = node.splits.length;
+    const countLabel = count > 0 ? ` (${count})` : '';
+    return {
+      path: node.path,
+      label: `${'-- '.repeat(node.depth)}${node.name}${countLabel}`
+    };
+  })
 );
 
 // Filtered folder nodes - filter based on selected parent folder
@@ -1418,13 +1422,14 @@ watch(
 }
 
 .clear-filter-btn {
-  padding: 6px 12px;
+  padding: 4px 8px;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   background: #ef4444;
   color: white;
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   cursor: pointer;
+  line-height: 1;
 }
 
 .clear-filter-btn:hover {
@@ -1478,9 +1483,10 @@ watch(
 }
 
 .parent-folder-row .clear-filter-btn {
-  padding: 6px 10px;
-  font-size: 0.9rem;
+  padding: 4px 8px;
+  font-size: 0.8rem;
   flex-shrink: 0;
+  min-width: 28px;
 }
 
 .folder-tree {
