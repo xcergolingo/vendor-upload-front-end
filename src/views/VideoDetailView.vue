@@ -81,26 +81,31 @@
           <span v-if="editLangLabel" class="lang-hint">Editing: {{ editLangLabel }}</span>
         </div>
         
-        <!-- Global Offset & Batch Shift Controls -->
-        <div class="timing-controls">
-          <div class="offset-control">
-            <label class="offset-label">Global Offset:</label>
-            <button type="button" class="shift-btn" @click="shiftAllTimestamps(-300)">−0.3s</button>
-            <button type="button" class="shift-btn" @click="shiftAllTimestamps(-100)">−0.1s</button>
-            <input 
-              type="range" 
-              v-model.number="globalOffsetMs" 
-              min="-2000" 
-              max="2000" 
-              step="50"
-              class="offset-slider"
-              @change="applyGlobalOffset"
-            />
-            <span class="offset-value">{{ (globalOffsetMs / 1000).toFixed(2) }}s</span>
-            <button type="button" class="shift-btn" @click="shiftAllTimestamps(100)">+0.1s</button>
-            <button type="button" class="shift-btn" @click="shiftAllTimestamps(300)">+0.3s</button>
-            <button type="button" class="apply-offset-btn" @click="applyGlobalOffset" :disabled="globalOffsetMs === 0">Apply</button>
-            <button type="button" class="reset-offset-btn" @click="globalOffsetMs = 0">Reset</button>
+        <!-- Global Offset & Batch Shift Controls (Collapsible) -->
+        <div class="timing-controls-wrapper">
+          <button type="button" class="toggle-offset-btn" @click="showGlobalOffset = !showGlobalOffset">
+            {{ showGlobalOffset ? '▼' : '▶' }} Global Offset
+          </button>
+          <div v-show="showGlobalOffset" class="timing-controls">
+            <div class="offset-control">
+              <label class="offset-label">Adjust:</label>
+              <button type="button" class="shift-btn" @click="shiftAllTimestamps(-300)">−0.3s</button>
+              <button type="button" class="shift-btn" @click="shiftAllTimestamps(-100)">−0.1s</button>
+              <input 
+                type="range" 
+                v-model.number="globalOffsetMs" 
+                min="-2000" 
+                max="2000" 
+                step="50"
+                class="offset-slider"
+                @change="applyGlobalOffset"
+              />
+              <span class="offset-value">{{ (globalOffsetMs / 1000).toFixed(2) }}s</span>
+              <button type="button" class="shift-btn" @click="shiftAllTimestamps(100)">+0.1s</button>
+              <button type="button" class="shift-btn" @click="shiftAllTimestamps(300)">+0.3s</button>
+              <button type="button" class="apply-offset-btn" @click="applyGlobalOffset" :disabled="globalOffsetMs === 0">Apply</button>
+              <button type="button" class="reset-offset-btn" @click="globalOffsetMs = 0">Reset</button>
+            </div>
           </div>
         </div>
         <div class="editable-list">
@@ -365,6 +370,7 @@ const newSubfolderName = ref('');
 const creatingSubfolder = ref(false);
 const deletingFolder = ref(false);
 const globalOffsetMs = ref(0);
+const showGlobalOffset = ref(false);
 const loopingEntryId = ref(null);
 let loopTimeUpdateHandler = null;
 const editingTimeIndex = ref(null);
@@ -1388,10 +1394,37 @@ function mergeWithNext(index) {
 
 async function regenEntry(index) {
   const entry = editableEntries.value[index];
-  if (!entry || entry.isRegenerating) return;
-  if (!authState.userEmail || !decodedFileName.value) return;
+  if (!entry || entry.isRegenerating) {
+    console.log('[Gen] Entry not found or already regenerating');
+    return;
+  }
+  if (!authState.userEmail) {
+    alert('Please log in to generate clips');
+    console.log('[Gen] No user email');
+    return;
+  }
+  if (!decodedFileName.value) {
+    alert('No file selected');
+    console.log('[Gen] No file name');
+    return;
+  }
   
   entry.isRegenerating = true;
+  
+  const payload = {
+    user_name: authState.userEmail,
+    file_name: decodedFileName.value,
+    start_time: entry.start,
+    end_time: entry.end,
+    sent: entry.inputText || entry.text || '',
+    sent_translation: entry.outputText || '',
+    lang: inputLang.value || 'auto',
+    lang_translation: outputLang.value || '',
+    folder: selectedFolderPath.value || ''
+  };
+  
+  console.log('[Gen] Sending payload:', payload);
+  
   try {
     // Call API to generate clip for this entry
     const response = await fetch(
@@ -1399,28 +1432,21 @@ async function regenEntry(index) {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_name: authState.userEmail,
-          file_name: decodedFileName.value,
-          start_time: entry.start,
-          end_time: entry.end,
-          sent: entry.inputText || entry.text || '',
-          sent_translation: entry.outputText || '',
-          lang: inputLang.value || 'auto',
-          lang_translation: outputLang.value || '',
-          folder: selectedFolderPath.value || ''
-        })
+        body: JSON.stringify(payload)
       }
     );
     
+    const responseText = await response.text();
+    console.log('[Gen] Response status:', response.status, 'body:', responseText);
+    
     if (!response.ok) {
-      throw new Error('Generation failed');
+      throw new Error(`Generation failed: ${response.status} - ${responseText}`);
     }
     
     alert('Clip generated successfully!');
   } catch (err) {
-    console.error(err);
-    alert('Failed to generate clip. Please try again.');
+    console.error('[Gen] Error:', err);
+    alert('Failed to generate clip: ' + err.message);
   } finally {
     entry.isRegenerating = false;
   }
@@ -2750,8 +2776,29 @@ h2 {
 }
 
 /* Global Offset & Batch Shift Controls */
-.timing-controls {
+.timing-controls-wrapper {
   margin: 16px 0;
+}
+
+.toggle-offset-btn {
+  background: #e8eaef;
+  border: 1px solid #d1d3e2;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #5a5c69;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.toggle-offset-btn:hover {
+  background: #d1d3e2;
+  color: #3a3b45;
+}
+
+.timing-controls {
+  margin-top: 10px;
   padding: 12px 16px;
   background: #f8f9fc;
   border-radius: 8px;
